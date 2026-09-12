@@ -1,0 +1,53 @@
+version: '3.8'
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: synccoders_postgres
+    restart: always
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: password123
+      POSTGRES_DB: synccoders
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  server:
+    build:
+      context: ./server
+      dockerfile: Dockerfile
+    container_name: synccoders_server
+    restart: always
+    environment:
+      PORT: 5000
+      NODE_ENV: production
+      DATABASE_URL: "postgresql://postgres:password123@postgres:5432/synccoders?schema=public"
+      ACCESS_TOKEN_SECRET: "sync_coders_super_secure_access_token_secret_key_2026_min_32_chars!"
+      REFRESH_TOKEN_SECRET: "sync_coders_super_secure_refresh_token_secret_key_2026_min_32_chars!"
+      CLIENT_ORIGIN: "http://localhost:3000"
+    ports:
+      - "5000:5000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  client:
+    build:
+      context: ./client
+      dockerfile: Dockerfile
+    container_name: synccoders_client
+    restart: always
+    ports:
+      - "3000:80"
+    depends_on:
+      - server
+
+volumes:
+  pgdata:
