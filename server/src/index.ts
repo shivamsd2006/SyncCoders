@@ -1,3 +1,4 @@
+import 'express-async-errors';
 import http from 'http';
 import express from 'express';
 import cors from 'cors';

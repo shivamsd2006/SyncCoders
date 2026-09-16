@@ -38,6 +38,7 @@ const updateTaskSchema = {
     assignedTo: z.string().uuid().optional().nullable(),
     priority: z.nativeEnum(TaskPriority).optional(),
     dueDate: z.string().datetime({ offset: true }).or(z.string().min(10)).optional(),
+    rejectionReason: z.string().optional(),
   }),
 };
 
@@ -56,7 +57,7 @@ router.patch(
 );
 router.delete(
   '/:id',
-  authorizeRoles(Role.ADMIN, Role.PM),
+  authorizeRoles(Role.ADMIN, Role.PM, Role.DEVELOPER),
   deleteTask
 );
 

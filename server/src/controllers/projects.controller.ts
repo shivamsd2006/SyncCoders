@@ -1,4 +1,5 @@
 import { Response } from 'express';
+import { ProjectStatus } from '@prisma/client';
 import { prisma } from '../config/prisma.js';
 import { AuthenticatedRequest } from '../types/index.js';
 
@@ -15,13 +16,18 @@ export const getProjects = async (req: AuthenticatedRequest, res: Response) => {
     });
   }
 
-  const whereClause = user.role === 'ADMIN' ? {} : { createdBy: user.userId };
+  const { status } = req.query;
+  const whereClause: any = user.role === 'ADMIN' ? {} : { createdBy: user.userId };
+
+  if (status && Object.values(ProjectStatus).includes(status as ProjectStatus)) {
+    whereClause.status = status as ProjectStatus;
+  }
 
   const projects = await prisma.project.findMany({
     where: whereClause,
     include: {
       client: true,
-      creator: { select: { id: true, name: true, email: true } },
+      creator: { select: { id: true, name: true, email: true, username: true, headline: true, avatarUrl: true } },
       tasks: {
         select: {
           id: true,
@@ -48,10 +54,10 @@ export const getProjectById = async (req: AuthenticatedRequest, res: Response) =
     where: { id },
     include: {
       client: true,
-      creator: { select: { id: true, name: true, email: true } },
+      creator: { select: { id: true, name: true, email: true, username: true, headline: true, avatarUrl: true } },
       tasks: {
         include: {
-          assignee: { select: { id: true, name: true, email: true } },
+          assignee: { select: { id: true, name: true, email: true, username: true, headline: true, avatarUrl: true } },
         },
         orderBy: { dueDate: 'asc' },
       },
@@ -101,7 +107,7 @@ export const getProjectById = async (req: AuthenticatedRequest, res: Response) =
 
 export const createProject = async (req: AuthenticatedRequest, res: Response) => {
   const user = req.user!;
-  const { title, description, clientId } = req.body;
+  const { title, description, clientId, status } = req.body;
 
   // Verify client exists
   const client = await prisma.client.findUnique({ where: { id: clientId } });
@@ -117,6 +123,7 @@ export const createProject = async (req: AuthenticatedRequest, res: Response) =>
       title,
       description,
       clientId,
+      status: ProjectStatus.ACTIVE,
       createdBy: user.userId,
     },
     include: {
@@ -134,7 +141,7 @@ export const createProject = async (req: AuthenticatedRequest, res: Response) =>
 export const updateProject = async (req: AuthenticatedRequest, res: Response) => {
   const user = req.user!;
   const { id } = req.params;
-  const { title, description, clientId } = req.body;
+  const { title, description, clientId, status } = req.body;
 
   const existing = await prisma.project.findUnique({ where: { id } });
   if (!existing) {
@@ -160,6 +167,10 @@ export const updateProject = async (req: AuthenticatedRequest, res: Response) =>
       title: title ?? existing.title,
       description: description ?? existing.description,
       clientId: clientId ?? existing.clientId,
+      status:
+        status && Object.values(ProjectStatus).includes(status as ProjectStatus)
+          ? (status as ProjectStatus)
+          : existing.status,
     },
     include: {
       client: true,

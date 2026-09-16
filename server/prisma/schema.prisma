@@ -1,6 +1,7 @@
 datasource db {
-  provider = "postgresql"
-  url      = env("DATABASE_URL")
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
 }
 
 generator client {
@@ -27,11 +28,20 @@ enum TaskPriority {
   CRITICAL
 }
 
+enum ProjectStatus {
+  ACTIVE
+  ON_HOLD
+  COMPLETED
+}
+
 model User {
   id              String            @id @default(uuid())
   email           String            @unique
   passwordHash    String            @map("password_hash")
   name            String
+  username        String?           @map("username")
+  headline        String?           @map("headline")
+  avatarUrl       String?           @map("avatar_url") @db.Text
   role            Role
   createdProjects Project[]         @relation("ProjectCreator")
   assignedTasks   Task[]            @relation("TaskAssignee")
@@ -56,19 +66,21 @@ model Client {
 }
 
 model Project {
-  id          String   @id @default(uuid())
+  id          String        @id @default(uuid())
   title       String
   description String?
-  clientId    String   @map("client_id")
-  client      Client   @relation(fields: [clientId], references: [id], onDelete: Cascade)
-  createdBy   String   @map("created_by")
-  creator     User     @relation("ProjectCreator", fields: [createdBy], references: [id], onDelete: Restrict)
+  status      ProjectStatus @default(ACTIVE)
+  clientId    String        @map("client_id")
+  client      Client        @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  createdBy   String        @map("created_by")
+  creator     User          @relation("ProjectCreator", fields: [createdBy], references: [id], onDelete: Restrict)
   tasks       Task[]
-  createdAt   DateTime @default(now()) @map("created_at")
-  updatedAt   DateTime @updatedAt @map("updated_at")
+  createdAt   DateTime      @default(now()) @map("created_at")
+  updatedAt   DateTime      @updatedAt @map("updated_at")
 
   @@index([createdBy])
   @@index([clientId])
+  @@index([status])
   @@map("projects")
 }
 

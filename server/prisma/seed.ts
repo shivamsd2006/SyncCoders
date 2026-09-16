@@ -25,7 +25,10 @@ async function main() {
     data: {
       email: 'admin@agency.com',
       passwordHash: adminPassword,
-      name: 'Sarah Connor (Admin)',
+      name: 'Sarah Connor',
+      username: 'sarah.admin',
+      headline: 'Agency Director & Operations Head',
+      avatarUrl: 'https://images.unsplash.com/photo-1494790108377-be9c29b29330?w=150&auto=format&fit=crop&q=80',
       role: Role.ADMIN,
     },
   });
@@ -34,7 +37,10 @@ async function main() {
     data: {
       email: 'pm1@agency.com',
       passwordHash: pmPassword,
-      name: 'Alex Johnson (PM)',
+      name: 'Alex Johnson',
+      username: 'alex.j',
+      headline: 'Senior Technical Project Manager',
+      avatarUrl: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150&auto=format&fit=crop&q=80',
       role: Role.PM,
     },
   });
@@ -43,7 +49,10 @@ async function main() {
     data: {
       email: 'pm2@agency.com',
       passwordHash: pmPassword,
-      name: 'Elena Rostova (PM)',
+      name: 'Elena Rostova',
+      username: 'elena.r',
+      headline: 'Product Lead & Agile Scrum Master',
+      avatarUrl: 'https://images.unsplash.com/photo-1580489944761-15a19d654956?w=150&auto=format&fit=crop&q=80',
       role: Role.PM,
     },
   });
@@ -52,7 +61,10 @@ async function main() {
     data: {
       email: 'dev1@agency.com',
       passwordHash: devPassword,
-      name: 'Ravi Kumar (Dev)',
+      name: 'Ravi Kumar',
+      username: 'ravi.k',
+      headline: 'Senior Backend Engineer',
+      avatarUrl: 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=150&auto=format&fit=crop&q=80',
       role: Role.DEVELOPER,
     },
   });
@@ -61,7 +73,10 @@ async function main() {
     data: {
       email: 'dev2@agency.com',
       passwordHash: devPassword,
-      name: 'Marcus Chen (Dev)',
+      name: 'Marcus Chen',
+      username: 'marcus.dev',
+      headline: 'Full-Stack Developer & Cloud Architect',
+      avatarUrl: 'https://images.unsplash.com/photo-1500648767791-00dcc994a43e?w=150&auto=format&fit=crop&q=80',
       role: Role.DEVELOPER,
     },
   });
@@ -70,7 +85,10 @@ async function main() {
     data: {
       email: 'dev3@agency.com',
       passwordHash: devPassword,
-      name: 'Aisha Patel (Dev)',
+      name: 'Aisha Patel',
+      username: 'aisha.p',
+      headline: 'Staff UI/UX & Frontend Specialist',
+      avatarUrl: 'https://images.unsplash.com/photo-1573496359142-b8d87734a5a2?w=150&auto=format&fit=crop&q=80',
       role: Role.DEVELOPER,
     },
   });
@@ -79,7 +97,10 @@ async function main() {
     data: {
       email: 'dev4@agency.com',
       passwordHash: devPassword,
-      name: 'Liam O\'Connor (Dev)',
+      name: 'Liam O\'Connor',
+      username: 'liam.dev',
+      headline: 'Mobile & Realtime Systems Engineer',
+      avatarUrl: 'https://images.unsplash.com/photo-1519085360753-af0119f7cbe7?w=150&auto=format&fit=crop&q=80',
       role: Role.DEVELOPER,
     },
   });

@@ -10,6 +10,9 @@ export const getUsers = async (_req: AuthenticatedRequest, res: Response) => {
       email: true,
       name: true,
       role: true,
+      username: true,
+      headline: true,
+      avatarUrl: true,
       createdAt: true,
       _count: {
         select: {
@@ -35,6 +38,9 @@ export const getDevelopers = async (_req: AuthenticatedRequest, res: Response) =
       email: true,
       name: true,
       role: true,
+      username: true,
+      headline: true,
+      avatarUrl: true,
     },
     orderBy: { name: 'asc' },
   });
@@ -42,5 +48,42 @@ export const getDevelopers = async (_req: AuthenticatedRequest, res: Response) =
   return res.json({
     success: true,
     data: { developers },
+  });
+};
+
+export const updateProfile = async (req: AuthenticatedRequest, res: Response) => {
+  if (!req.user) {
+    return res.status(401).json({
+      success: false,
+      error: { code: 'UNAUTHORIZED', message: 'Not authenticated' },
+    });
+  }
+
+  const { name, username, headline, avatarUrl } = req.body;
+
+  const updatedUser = await prisma.user.update({
+    where: { id: req.user.userId },
+    data: {
+      ...(name !== undefined && { name: name.trim() }),
+      ...(username !== undefined && { username: username.trim() || null }),
+      ...(headline !== undefined && { headline: headline.trim() || null }),
+      ...(avatarUrl !== undefined && { avatarUrl: avatarUrl ? avatarUrl.trim() : null }),
+    },
+    select: {
+      id: true,
+      email: true,
+      name: true,
+      role: true,
+      username: true,
+      headline: true,
+      avatarUrl: true,
+      createdAt: true,
+    },
+  });
+
+  return res.json({
+    success: true,
+    data: { user: updatedUser },
+    message: 'Profile updated successfully',
   });
 };

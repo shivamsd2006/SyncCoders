@@ -14,77 +14,91 @@ function hashToken(token: string): string {
 }
 
 export const login = async (req: Request, res: Response) => {
-  const { email, password } = req.body;
+  try {
+    const { email, password } = req.body;
 
-  const user = await prisma.user.findUnique({
-    where: { email: email.toLowerCase().trim() },
-  });
-
-  if (!user) {
-    return res.status(401).json({
-      success: false,
-      error: {
-        code: 'INVALID_CREDENTIALS',
-        message: 'Invalid email or password',
-      },
+    const user = await prisma.user.findUnique({
+      where: { email: email.toLowerCase().trim() },
     });
-  }
 
-  const isPasswordValid = await bcrypt.compare(password, user.passwordHash);
-  if (!isPasswordValid) {
-    return res.status(401).json({
-      success: false,
-      error: {
-        code: 'INVALID_CREDENTIALS',
-        message: 'Invalid email or password',
-      },
-    });
-  }
+    if (!user) {
+      return res.status(401).json({
+        success: false,
+        error: {
+          code: 'INVALID_CREDENTIALS',
+          message: 'Invalid email or password',
+        },
+      });
+    }
 
-  const payload: JwtPayload = {
-    userId: user.id,
-    email: user.email,
-    name: user.name,
-    role: user.role,
-  };
+    const isPasswordValid = await bcrypt.compare(password, user.passwordHash);
+    if (!isPasswordValid) {
+      return res.status(401).json({
+        success: false,
+        error: {
+          code: 'INVALID_CREDENTIALS',
+          message: 'Invalid email or password',
+        },
+      });
+    }
 
-  const accessToken = jwt.sign(payload, ENV.ACCESS_TOKEN_SECRET, {
-    expiresIn: ACCESS_TOKEN_EXPIRY,
-  });
-
-  const rawRefreshToken = crypto.randomBytes(40).toString('hex');
-  const tokenHash = hashToken(rawRefreshToken);
-  const expiresAt = new Date(Date.now() + REFRESH_TOKEN_EXPIRY_DAYS * 24 * 60 * 60 * 1000);
-
-  // Store hashed refresh token in database
-  await prisma.refreshToken.create({
-    data: {
+    const payload: JwtPayload = {
       userId: user.id,
-      tokenHash,
-      expiresAt,
-    },
-  });
+      email: user.email,
+      name: user.name,
+      role: user.role,
+    };
 
-  // Set HttpOnly refresh token cookie
-  res.cookie('refreshToken', rawRefreshToken, {
-    httpOnly: true,
-    secure: ENV.NODE_ENV === 'production',
-    sameSite: ENV.NODE_ENV === 'production' ? 'strict' : 'lax',
-    maxAge: REFRESH_TOKEN_EXPIRY_DAYS * 24 * 60 * 60 * 1000,
-  });
+    const accessToken = jwt.sign(payload, ENV.ACCESS_TOKEN_SECRET, {
+      expiresIn: ACCESS_TOKEN_EXPIRY,
+    });
 
-  return res.json({
-    success: true,
-    data: {
-      accessToken,
-      user: {
-        id: user.id,
-        email: user.email,
-        name: user.name,
-        role: user.role,
+    const rawRefreshToken = crypto.randomBytes(40).toString('hex');
+    const tokenHash = hashToken(rawRefreshToken);
+    const expiresAt = new Date(Date.now() + REFRESH_TOKEN_EXPIRY_DAYS * 24 * 60 * 60 * 1000);
+
+    // Store hashed refresh token in database
+    await prisma.refreshToken.create({
+      data: {
+        userId: user.id,
+        tokenHash,
+        expiresAt,
       },
-    },
-  });
+    });
+
+    // Set HttpOnly refresh token cookie
+    res.cookie('refreshToken', rawRefreshToken, {
+      httpOnly: true,
+      secure: ENV.NODE_ENV === 'production',
+      sameSite: ENV.NODE_ENV === 'production' ? 'strict' : 'lax',
+      maxAge: REFRESH_TOKEN_EXPIRY_DAYS * 24 * 60 * 60 * 1000,
+    });
+
+    return res.json({
+      success: true,
+      data: {
+        accessToken,
+        user: {
+          id: user.id,
+          email: user.email,
+          name: user.name,
+          role: user.role,
+          username: user.username,
+          headline: user.headline,
+          avatarUrl: user.avatarUrl,
+        },
+      },
+    });
+  } catch (err: any) {
+    console.error('Login error:', err);
+    return res.status(500).json({
+      success: false,
+      error: {
+        code: 'LOGIN_ERROR',
+        message: err.message || 'An error occurred during login',
+      },
+    });
+  }
 };
 
 export const refreshToken = async (req: Request, res: Response) => {
@@ -133,27 +147,39 @@ export const refreshToken = async (req: Request, res: Response) => {
     success: true,
     data: {
       accessToken: newAccessToken,
-      user: payload,
+      user: {
+        ...payload,
+        username: storedToken.user.username,
+        headline: storedToken.user.headline,
+        avatarUrl: storedToken.user.avatarUrl,
+      },
     },
   });
 };
 
 export const logout = async (req: Request, res: Response) => {
-  const rawToken = req.cookies.refreshToken;
-
-  if (rawToken) {
-    const tokenHash = hashToken(rawToken);
-    await prisma.refreshToken.updateMany({
-      where: { tokenHash },
-      data: { revoked: true },
+  try {
+    const rawToken = req.cookies.refreshToken;
+    if (rawToken) {
+      const tokenHash = hashToken(rawToken);
+      await prisma.refreshToken.updateMany({
+        where: { tokenHash },
+        data: { revoked: true },
+      });
+    }
+  } catch (err) {
+    console.error('Failed to revoke refresh token in database:', err);
+  } finally {
+    res.clearCookie('refreshToken', {
+      httpOnly: true,
+      secure: ENV.NODE_ENV === 'production',
+      sameSite: ENV.NODE_ENV === 'production' ? 'strict' : 'lax',
+    });
+    return res.json({
+      success: true,
+      message: 'Logged out successfully',
     });
   }
-
-  res.clearCookie('refreshToken');
-  return res.json({
-    success: true,
-    message: 'Logged out successfully',
-  });
 };
 
 export const getMe = async (req: AuthenticatedRequest, res: Response) => {
@@ -166,7 +192,16 @@ export const getMe = async (req: AuthenticatedRequest, res: Response) => {
 
   const user = await prisma.user.findUnique({
     where: { id: req.user.userId },
-    select: { id: true, email: true, name: true, role: true, createdAt: true },
+    select: {
+      id: true,
+      email: true,
+      name: true,
+      role: true,
+      username: true,
+      headline: true,
+      avatarUrl: true,
+      createdAt: true,
+    },
   });
 
   if (!user) {
@@ -181,3 +216,93 @@ export const getMe = async (req: AuthenticatedRequest, res: Response) => {
     data: { user },
   });
 };
+
+export const register = async (req: Request, res: Response) => {
+  try {
+    const { name, email, password, role, username, headline, avatarUrl } = req.body;
+
+    const existing = await prisma.user.findUnique({
+      where: { email: email.toLowerCase().trim() },
+    });
+
+    if (existing) {
+      return res.status(409).json({
+        success: false,
+        error: {
+          code: 'USER_EXISTS',
+          message: 'An account with this email already exists',
+        },
+      });
+    }
+
+    const passwordHash = await bcrypt.hash(password, 10);
+
+    const user = await prisma.user.create({
+      data: {
+        name,
+        email: email.toLowerCase().trim(),
+        passwordHash,
+        role: role || 'DEVELOPER',
+        username: username?.trim() || null,
+        headline: headline?.trim() || null,
+        avatarUrl: avatarUrl || null,
+      },
+    });
+
+    const payload: JwtPayload = {
+      userId: user.id,
+      email: user.email,
+      name: user.name,
+      role: user.role,
+    };
+
+    const accessToken = jwt.sign(payload, ENV.ACCESS_TOKEN_SECRET, {
+      expiresIn: ACCESS_TOKEN_EXPIRY,
+    });
+
+    const rawRefreshToken = crypto.randomBytes(40).toString('hex');
+    const tokenHash = hashToken(rawRefreshToken);
+    const expiresAt = new Date(Date.now() + REFRESH_TOKEN_EXPIRY_DAYS * 24 * 60 * 60 * 1000);
+
+    await prisma.refreshToken.create({
+      data: {
+        userId: user.id,
+        tokenHash,
+        expiresAt,
+      },
+    });
+
+    res.cookie('refreshToken', rawRefreshToken, {
+      httpOnly: true,
+      secure: ENV.NODE_ENV === 'production',
+      sameSite: ENV.NODE_ENV === 'production' ? 'strict' : 'lax',
+      maxAge: REFRESH_TOKEN_EXPIRY_DAYS * 24 * 60 * 60 * 1000,
+    });
+
+    return res.status(201).json({
+      success: true,
+      data: {
+        accessToken,
+        user: {
+          id: user.id,
+          email: user.email,
+          name: user.name,
+          role: user.role,
+          username: user.username,
+          headline: user.headline,
+          avatarUrl: user.avatarUrl,
+        },
+      },
+    });
+  } catch (err: any) {
+    console.error('Registration error:', err);
+    return res.status(500).json({
+      success: false,
+      error: {
+        code: 'REGISTER_ERROR',
+        message: err.message || 'An error occurred during registration',
+      },
+    });
+  }
+};
+

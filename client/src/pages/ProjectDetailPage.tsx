@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { useParams, Link } from 'react-router-dom';
+import { useParams, Link, useNavigate } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { api } from '../api/client.js';
 import { Project, TaskStatus } from '../types/index.js';
@@ -8,6 +8,7 @@ import { useAuth } from '../context/AuthContext.js';
 import { TaskCard } from '../components/TaskCard.js';
 import { ActivityFeed } from '../components/ActivityFeed.js';
 import { CreateTaskModal } from '../components/CreateTaskModal.js';
+import { DeleteProjectModal } from '../components/DeleteProjectModal.js';
 import {
   FolderKanban,
   User,
@@ -15,6 +16,8 @@ import {
   Calendar,
   Plus,
   ArrowLeft,
+  Trash2,
+  CheckCircle2,
 } from 'lucide-react';
 import { format } from 'date-fns';
 
@@ -30,6 +33,8 @@ export const ProjectDetailPage: React.FC = () => {
   const { user } = useAuth();
   const { joinProject, leaveProject } = useSocket();
   const [isTaskModalOpen, setIsTaskModalOpen] = useState(false);
+  const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
+  const navigate = useNavigate();
 
   // Join the project's WebSocket room on mount and leave on unmount
   useEffect(() => {
@@ -53,7 +58,8 @@ export const ProjectDetailPage: React.FC = () => {
   });
 
   const project = data?.project;
-  const canManageTasks = user?.role === 'ADMIN' || user?.role === 'PM';
+  const canManageTasks = user?.role === 'ADMIN' || (user?.role === 'PM' && project?.createdBy === user?.id);
+  const canDeleteProject = user?.role === 'ADMIN' || (user?.role === 'PM' && project?.createdBy === user?.id);
 
   if (isLoading) {
     return (
@@ -105,15 +111,28 @@ export const ProjectDetailPage: React.FC = () => {
           )}
         </div>
 
-        {canManageTasks && (
-          <button
-            onClick={() => setIsTaskModalOpen(true)}
-            className="flex items-center space-x-1.5 px-4 py-2 rounded-xl text-xs font-semibold text-white bg-sky-600 hover:bg-sky-500 shadow-md shadow-sky-500/20 transition-all self-start sm:self-auto"
-          >
-            <Plus className="h-3.5 w-3.5" />
-            <span>Add Project Task</span>
-          </button>
-        )}
+        <div className="flex items-center space-x-2.5 self-start sm:self-auto">
+          {canManageTasks && (
+            <button
+              onClick={() => setIsTaskModalOpen(true)}
+              className="flex items-center space-x-1.5 px-4 py-2 rounded-xl text-xs font-semibold text-white bg-sky-600 hover:bg-sky-500 shadow-md shadow-sky-500/20 transition-all"
+            >
+              <Plus className="h-3.5 w-3.5" />
+              <span>Add Project Task</span>
+            </button>
+          )}
+
+          {canDeleteProject && (
+            <button
+              onClick={() => setIsDeleteModalOpen(true)}
+              className="flex items-center space-x-1.5 px-3.5 py-2 rounded-xl text-xs font-semibold text-rose-600 hover:text-white hover:bg-rose-600 border border-rose-200 dark:border-rose-900/60 dark:text-rose-400 dark:hover:bg-rose-600 dark:hover:text-white transition-all shadow-sm"
+              title="Completely delete this project"
+            >
+              <Trash2 className="h-3.5 w-3.5" />
+              <span>Delete Project</span>
+            </button>
+          )}
+        </div>
       </div>
 
       {/* Project Meta Bar */}
@@ -130,8 +149,24 @@ export const ProjectDetailPage: React.FC = () => {
           <Calendar className="h-4 w-4 text-slate-400" />
           <span>Created {format(new Date(project.createdAt), 'MMM d, yyyy')}</span>
         </div>
-        <div className="ml-auto text-[11px] font-semibold text-emerald-600 dark:text-emerald-400 bg-emerald-500/10 px-2.5 py-1 rounded-full">
-          ⚡ Live WebSocket Room Active
+        <div className="flex items-center space-x-2">
+          <span className="font-semibold text-slate-400">Status:</span>
+          {project.status === 'COMPLETED' ? (
+            <span className="inline-flex items-center space-x-1 text-[10px] font-bold uppercase px-2 py-0.5 rounded-full border bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-200 dark:border-emerald-900/50">
+              <CheckCircle2 className="h-3 w-3" />
+              <span>Done (Completed)</span>
+            </span>
+          ) : (
+            <span
+              className={`text-[10px] font-bold uppercase px-2 py-0.5 rounded-full border ${
+                project.status === 'ACTIVE'
+                  ? 'bg-blue-500/10 text-blue-600 dark:text-blue-400 border-blue-200 dark:border-blue-900/50'
+                  : 'bg-amber-500/10 text-amber-600 dark:text-amber-400 border-amber-200 dark:border-amber-900/50'
+              }`}
+            >
+              {project.status.replace('_', ' ')}
+            </span>
+          )}
         </div>
       </div>
 
@@ -181,6 +216,15 @@ export const ProjectDetailPage: React.FC = () => {
         onClose={() => setIsTaskModalOpen(false)}
         defaultProjectId={id}
       />
+
+      {canDeleteProject && (
+        <DeleteProjectModal
+          isOpen={isDeleteModalOpen}
+          onClose={() => setIsDeleteModalOpen(false)}
+          project={project}
+          onSuccess={() => navigate('/')}
+        />
+      )}
     </div>
   );
 };

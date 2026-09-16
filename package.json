@@ -4,6 +4,7 @@
   "private": true,
   "description": "Real-Time Client Project Dashboard with Role-Based Access & Live Activity Feed",
   "scripts": {
+    "dev": "npx concurrently -n \"SERVER,CLIENT\" -c \"blue.bold,green.bold\" \"npm --prefix server run dev\" \"npm --prefix client run dev\"",
     "dev:server": "npm --prefix server run dev",
     "dev:client": "npm --prefix client run dev",
     "build:server": "npm --prefix server run build",

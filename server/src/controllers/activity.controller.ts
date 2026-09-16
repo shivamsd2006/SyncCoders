@@ -26,7 +26,7 @@ export const getActivityFeed = async (req: AuthenticatedRequest, res: Response) 
     take: limit,
     orderBy: { createdAt: 'desc' },
     include: {
-      user: { select: { id: true, name: true, email: true, role: true } },
+      user: { select: { id: true, name: true, email: true, role: true, username: true, headline: true, avatarUrl: true } },
       task: {
         select: {
           id: true,
@@ -49,6 +49,9 @@ export const getActivityFeed = async (req: AuthenticatedRequest, res: Response) 
         projectName: log.task.project.title,
         userId: log.userId,
         userName: log.user.name,
+        userUsername: log.user.username,
+        userHeadline: log.user.headline,
+        userAvatar: log.user.avatarUrl,
         oldStatus: log.oldStatus,
         newStatus: log.newStatus,
         formattedMessage: log.formattedMessage,

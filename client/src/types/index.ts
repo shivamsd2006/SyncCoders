@@ -9,6 +9,9 @@ export interface User {
   email: string;
   name: string;
   role: Role;
+  username?: string | null;
+  headline?: string | null;
+  avatarUrl?: string | null;
   createdAt?: string;
 }
 
@@ -22,10 +25,13 @@ export interface Client {
   };
 }
 
+export type ProjectStatus = 'ACTIVE' | 'ON_HOLD' | 'COMPLETED';
+
 export interface Project {
   id: string;
   title: string;
   description?: string | null;
+  status: ProjectStatus;
   clientId: string;
   client?: Client;
   createdBy: string;
@@ -33,6 +39,9 @@ export interface Project {
     id: string;
     name: string;
     email: string;
+    username?: string | null;
+    headline?: string | null;
+    avatarUrl?: string | null;
   };
   tasks?: Task[];
   createdAt: string;
@@ -52,6 +61,9 @@ export interface Task {
     id: string;
     name: string;
     email: string;
+    username?: string | null;
+    headline?: string | null;
+    avatarUrl?: string | null;
   } | null;
   title: string;
   description?: string | null;
@@ -71,6 +83,9 @@ export interface ActivityLog {
   projectName?: string;
   userId: string;
   userName: string;
+  userUsername?: string | null;
+  userHeadline?: string | null;
+  userAvatar?: string | null;
   oldStatus: string;
   newStatus: string;
   formattedMessage: string;
@@ -107,6 +122,7 @@ export interface PMStats {
   projectsCount: number;
   projectsSummary: Project[];
   tasksByPriority: Record<TaskPriority, number>;
+  tasksByStatus: Record<TaskStatus, number>;
   upcomingDueThisWeek: Task[];
   overdueTasksCount: number;
   onlineUsersCount: number;

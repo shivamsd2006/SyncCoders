@@ -10,7 +10,7 @@ import {
 import { authenticate } from '../middleware/authenticate.js';
 import { authorizeRoles } from '../middleware/authorize.js';
 import { validateRequest } from '../middleware/validate.js';
-import { Role } from '@prisma/client';
+import { Role, ProjectStatus } from '@prisma/client';
 
 const router = Router();
 
@@ -21,6 +21,7 @@ const createProjectSchema = {
     title: z.string().min(3, 'Project title must be at least 3 characters'),
     description: z.string().optional(),
     clientId: z.string().uuid('Invalid client ID format'),
+    status: z.nativeEnum(ProjectStatus).optional(),
   }),
 };
 
@@ -32,6 +33,7 @@ const updateProjectSchema = {
     title: z.string().min(3).optional(),
     description: z.string().optional(),
     clientId: z.string().uuid().optional(),
+    status: z.nativeEnum(ProjectStatus).optional(),
   }),
 };
 

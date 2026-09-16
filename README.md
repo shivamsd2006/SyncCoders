@@ -150,49 +150,37 @@ erDiagram
 
 ## 🚀 Quickstart & Local Setup
 
-### Option A: Using Docker Compose (Recommended)
+### Primary Method: Cloud Supabase + Local Node.js (Zero Docker Needed)
 
-1. Clone the repository and navigate to root:
-   ```bash
-   git clone <repository-url>
-   cd SyncCoders
-   ```
-2. Start the full stack with Docker Compose:
-   ```bash
-   docker compose up --build -d
-   ```
-3. Run the database seed inside the server container:
-   ```bash
-   docker compose exec server npm run seed
-   ```
-4. Access the application:
-   * **Frontend**: `http://localhost:3000`
-   * **Backend API**: `http://localhost:5000`
+The application connects directly to your cloud PostgreSQL database on **Supabase**. No local database installation or Docker is required.
+
+#### 1. Start Backend Server (Terminal 1)
+```bash
+cd server
+npm run dev
+```
+* Runs Express API & Socket.io server on `http://localhost:5000`
+* Automatically starts the background overdue task scheduler (every 60s)
+* Connected directly to Supabase cloud PostgreSQL
+
+#### 2. Start Frontend App (Terminal 2)
+```bash
+cd client
+npm run dev
+```
+* Opens the Vite React dashboard at `http://localhost:5173`
+* Proxies `/api` and `/socket.io` to the backend
 
 ---
 
-### Option B: Local Non-Docker Development
+### Optional Method: Docker Compose (For Container-based Evaluation Only)
 
-#### 1. Backend Setup
+If an evaluator specifically requires running via Docker:
 ```bash
-cd server
-cp .env.example .env
-# Ensure DATABASE_URL in .env points to your local or cloud PostgreSQL instance (Neon / Supabase)
-
-npm install
-npx prisma generate
-npx prisma db push
-npm run seed
-npm run dev
+docker compose up --build -d
 ```
-
-#### 2. Frontend Setup
-```bash
-cd ../client
-npm install
-npm run dev
-```
-Open `http://localhost:5173` in your browser.
+* **Frontend**: `http://localhost:3000`
+* **Backend API**: `http://localhost:5000`
 
 ---
 

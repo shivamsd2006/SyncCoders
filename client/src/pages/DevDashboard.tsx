@@ -34,18 +34,17 @@ export const DevDashboard: React.FC = () => {
   const stats = statsData?.data;
   const tasks = tasksData?.tasks || [];
 
+  const showCompleted = searchParams.get('showCompleted') === 'true';
+  const currentStatus = searchParams.get('status') || '';
+
+  // 1-B: Completed tasks hidden by default unless toggle is ON or DONE status explicitly selected
+  let processedTasks = [...tasks];
+  if (!showCompleted && currentStatus !== 'DONE') {
+    processedTasks = processedTasks.filter((t) => t.status !== 'DONE');
+  }
+
   return (
     <div className="space-y-8 animate-in fade-in duration-300">
-      {/* Header */}
-      <div>
-        <h1 className="text-2xl font-black tracking-tight text-slate-900 dark:text-white">
-          Developer Workspace
-        </h1>
-        <p className="text-xs text-slate-500 dark:text-slate-400">
-          Your personal assigned tasks, sorted strictly by priority then upcoming due date.
-        </p>
-      </div>
-
       {/* Developer Metrics */}
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-3.5">
         <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm dark:border-slate-800 dark:bg-slate-900">
@@ -94,7 +93,7 @@ export const DevDashboard: React.FC = () => {
           <div className="flex items-center justify-between">
             <div>
               <h3 className="text-base font-bold text-slate-900 dark:text-slate-100">
-                Your Assigned Tasks
+                Your Assigned Tasks ({processedTasks.length})
               </h3>
               <p className="text-xs text-slate-500 dark:text-slate-400">
                 Sorted by Priority (Critical → Low) then Due Date
@@ -106,15 +105,15 @@ export const DevDashboard: React.FC = () => {
             </div>
           </div>
 
-          <TaskFilters />
+          <TaskFilters tasksToExport={processedTasks} showUrgencySort={false} />
 
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            {tasks.length === 0 ? (
+            {processedTasks.length === 0 ? (
               <div className="col-span-2 py-12 text-center text-xs text-slate-400 rounded-2xl border border-dashed border-slate-200 dark:border-slate-800">
                 No tasks assigned matching current filters.
               </div>
             ) : (
-              tasks.map((task) => <TaskCard key={task.id} task={task} />)
+              processedTasks.map((task) => <TaskCard key={task.id} task={task} />)
             )}
           </div>
         </div>

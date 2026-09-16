@@ -13,6 +13,9 @@ export interface ActivityBroadcastPayload {
   taskId: string;
   userId: string;
   userName: string;
+  userUsername?: string | null;
+  userHeadline?: string | null;
+  userAvatar?: string | null;
   taskTitle: string;
   projectId: string;
   oldStatus: string;
@@ -159,3 +162,10 @@ export function emitNotification(userId: string, payload: NotificationBroadcastP
   if (!io) return;
   io.to(`user:${userId}`).emit('notification:new', payload);
 }
+
+export function broadcastProjectUpdate(projectId: string, status: string) {
+  if (!io) return;
+  io.to(`project:${projectId}`).emit('project:updated', { projectId, status });
+  io.emit('project:updated', { projectId, status });
+}
+

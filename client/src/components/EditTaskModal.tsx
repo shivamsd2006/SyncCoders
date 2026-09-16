@@ -1,38 +1,29 @@
 import React, { useState } from 'react';
 import { api } from '../api/client.js';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { Project, TaskPriority, User } from '../types/index.js';
-import { X, CheckSquare } from 'lucide-react';
+import { Task, TaskPriority, TaskStatus, User } from '../types/index.js';
+import { X, Edit3, Trash2 } from 'lucide-react';
+import { format } from 'date-fns';
 
 interface Props {
   isOpen: boolean;
   onClose: () => void;
-  defaultProjectId?: string;
+  task: Task;
 }
 
-export const CreateTaskModal: React.FC<Props> = ({
-  isOpen,
-  onClose,
-  defaultProjectId,
-}) => {
+export const EditTaskModal: React.FC<Props> = ({ isOpen, onClose, task }) => {
   const queryClient = useQueryClient();
-  const [title, setTitle] = useState('');
-  const [description, setDescription] = useState('');
-  const [projectId, setProjectId] = useState(defaultProjectId || '');
-  const [assignedTo, setAssignedTo] = useState('');
-  const [priority, setPriority] = useState<TaskPriority>('MEDIUM');
-  const [dueDate, setDueDate] = useState('');
+  const [title, setTitle] = useState(task.title);
+  const [description, setDescription] = useState(task.description || '');
+  const [assignedTo, setAssignedTo] = useState(task.assignedTo || '');
+  const [priority, setPriority] = useState<TaskPriority>(task.priority);
+  const [status, setStatus] = useState<TaskStatus>(task.status);
+  const [dueDate, setDueDate] = useState(
+    task.dueDate ? format(new Date(task.dueDate), "yyyy-MM-dd'T'HH:mm") : ''
+  );
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isDeleting, setIsDeleting] = useState(false);
   const [error, setError] = useState('');
-
-  const { data: projectsData } = useQuery<{ projects: Project[] }>({
-    queryKey: ['projects'],
-    queryFn: async () => {
-      const res = await api.get('/projects');
-      return res.data.data;
-    },
-    enabled: isOpen && !defaultProjectId,
-  });
 
   const { data: devsData } = useQuery<{ developers: User[] }>({
     queryKey: ['developers'],
@@ -45,12 +36,10 @@ export const CreateTaskModal: React.FC<Props> = ({
 
   if (!isOpen) return null;
 
-  const targetProjectId = defaultProjectId || projectId;
-
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!title || !targetProjectId || !dueDate) {
-      setError('Please provide a title, project, and due date');
+    if (!title.trim() || !dueDate) {
+      setError('Please provide a title and due date');
       return;
     }
 
@@ -58,23 +47,48 @@ export const CreateTaskModal: React.FC<Props> = ({
     setError('');
 
     try {
-      await api.post('/tasks', {
-        title,
-        description,
-        projectId: targetProjectId,
+      await api.patch(`/tasks/${task.id}`, {
+        title: title.trim(),
+        description: description.trim() || null,
         assignedTo: assignedTo || null,
         priority,
+        status,
         dueDate: new Date(dueDate).toISOString(),
       });
 
       queryClient.invalidateQueries({ queryKey: ['tasks'] });
       queryClient.invalidateQueries({ queryKey: ['project'] });
+      queryClient.invalidateQueries({ queryKey: ['projects'] });
       queryClient.invalidateQueries({ queryKey: ['stats'] });
+      queryClient.invalidateQueries({ queryKey: ['activity'] });
       onClose();
     } catch (err: any) {
-      setError(err.response?.data?.error?.message || 'Failed to create task');
+      setError(err.response?.data?.error?.message || 'Failed to update task');
     } finally {
       setIsSubmitting(false);
+    }
+  };
+
+  const handleDelete = async () => {
+    if (!window.confirm(`Are you sure you want to delete task "${task.title}"?`)) {
+      return;
+    }
+
+    setIsDeleting(true);
+    setError('');
+
+    try {
+      await api.delete(`/tasks/${task.id}`);
+      queryClient.invalidateQueries({ queryKey: ['tasks'] });
+      queryClient.invalidateQueries({ queryKey: ['project'] });
+      queryClient.invalidateQueries({ queryKey: ['projects'] });
+      queryClient.invalidateQueries({ queryKey: ['stats'] });
+      queryClient.invalidateQueries({ queryKey: ['activity'] });
+      onClose();
+    } catch (err: any) {
+      setError(err.response?.data?.error?.message || 'Failed to delete task');
+    } finally {
+      setIsDeleting(false);
     }
   };
 
@@ -84,10 +98,10 @@ export const CreateTaskModal: React.FC<Props> = ({
         <div className="flex items-center justify-between pb-4 border-b border-slate-100 dark:border-slate-800">
           <div className="flex items-center space-x-2">
             <div className="p-2 rounded-xl bg-sky-500/10 text-sky-600 dark:text-sky-400">
-              <CheckSquare className="h-5 w-5" />
+              <Edit3 className="h-5 w-5" />
             </div>
             <h3 className="text-base font-bold text-slate-900 dark:text-slate-100">
-              Create & Assign Task
+              Edit Task
             </h3>
           </div>
           <button
@@ -114,31 +128,43 @@ export const CreateTaskModal: React.FC<Props> = ({
               required
               value={title}
               onChange={(e) => setTitle(e.target.value)}
-              placeholder="e.g. Integrate GPS Webhook Ingestion"
               className="w-full text-xs rounded-xl border border-slate-200 bg-slate-50 px-3.5 py-2.5 dark:border-slate-700 dark:bg-slate-800 text-slate-800 dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-sky-500/20"
             />
           </div>
 
-          {!defaultProjectId && (
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div>
               <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1.5">
-                Project *
+                Status
               </label>
               <select
-                required
-                value={projectId}
-                onChange={(e) => setProjectId(e.target.value)}
+                value={status}
+                onChange={(e) => setStatus(e.target.value as TaskStatus)}
                 className="w-full text-xs rounded-xl border border-slate-200 bg-slate-50 px-3.5 py-2.5 dark:border-slate-700 dark:bg-slate-800 text-slate-800 dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-sky-500/20"
               >
-                <option value="">Select Project</option>
-                {projectsData?.projects?.map((p) => (
-                  <option key={p.id} value={p.id}>
-                    {p.title}
-                  </option>
-                ))}
+                <option value="TODO">To Do</option>
+                <option value="IN_PROGRESS">In Progress</option>
+                <option value="IN_REVIEW">In Review</option>
+                <option value="DONE">Done</option>
               </select>
             </div>
-          )}
+
+            <div>
+              <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1.5">
+                Priority
+              </label>
+              <select
+                value={priority}
+                onChange={(e) => setPriority(e.target.value as TaskPriority)}
+                className="w-full text-xs rounded-xl border border-slate-200 bg-slate-50 px-3.5 py-2.5 dark:border-slate-700 dark:bg-slate-800 text-slate-800 dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-sky-500/20"
+              >
+                <option value="LOW">Low</option>
+                <option value="MEDIUM">Medium</option>
+                <option value="HIGH">High</option>
+                <option value="CRITICAL">Critical</option>
+              </select>
+            </div>
+          </div>
 
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div>
@@ -161,32 +187,16 @@ export const CreateTaskModal: React.FC<Props> = ({
 
             <div>
               <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1.5">
-                Priority
+                Due Date *
               </label>
-              <select
-                value={priority}
-                onChange={(e) => setPriority(e.target.value as TaskPriority)}
+              <input
+                type="datetime-local"
+                required
+                value={dueDate}
+                onChange={(e) => setDueDate(e.target.value)}
                 className="w-full text-xs rounded-xl border border-slate-200 bg-slate-50 px-3.5 py-2.5 dark:border-slate-700 dark:bg-slate-800 text-slate-800 dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-sky-500/20"
-              >
-                <option value="LOW">Low</option>
-                <option value="MEDIUM">Medium</option>
-                <option value="HIGH">High</option>
-                <option value="CRITICAL">Critical</option>
-              </select>
+              />
             </div>
-          </div>
-
-          <div>
-            <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1.5">
-              Due Date *
-            </label>
-            <input
-              type="datetime-local"
-              required
-              value={dueDate}
-              onChange={(e) => setDueDate(e.target.value)}
-              className="w-full text-xs rounded-xl border border-slate-200 bg-slate-50 px-3.5 py-2.5 dark:border-slate-700 dark:bg-slate-800 text-slate-800 dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-sky-500/20"
-            />
           </div>
 
           <div>
@@ -194,29 +204,41 @@ export const CreateTaskModal: React.FC<Props> = ({
               Description
             </label>
             <textarea
-              rows={2}
+              rows={3}
               value={description}
               onChange={(e) => setDescription(e.target.value)}
-              placeholder="Detailed task instructions..."
+              placeholder="Task instructions..."
               className="w-full text-xs rounded-xl border border-slate-200 bg-slate-50 px-3.5 py-2.5 dark:border-slate-700 dark:bg-slate-800 text-slate-800 dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-sky-500/20"
             />
           </div>
 
-          <div className="pt-2 flex justify-end space-x-3">
+          <div className="pt-3 border-t border-slate-100 dark:border-slate-800 flex items-center justify-between">
             <button
               type="button"
-              onClick={onClose}
-              className="px-4 py-2 text-xs font-medium text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-xl transition-colors"
+              disabled={isDeleting}
+              onClick={handleDelete}
+              className="flex items-center space-x-1.5 text-xs font-semibold text-rose-600 hover:text-rose-700 dark:text-rose-400 p-1.5 rounded-lg hover:bg-rose-50 dark:hover:bg-rose-950/40 transition-colors disabled:opacity-50"
             >
-              Cancel
+              <Trash2 className="h-4 w-4" />
+              <span>{isDeleting ? 'Deleting...' : 'Delete Task'}</span>
             </button>
-            <button
-              type="submit"
-              disabled={isSubmitting}
-              className="px-5 py-2 text-xs font-semibold text-white bg-sky-600 hover:bg-sky-500 rounded-xl shadow-md shadow-sky-500/20 transition-all disabled:opacity-50"
-            >
-              {isSubmitting ? 'Creating...' : 'Create Task'}
-            </button>
+
+            <div className="flex space-x-2.5">
+              <button
+                type="button"
+                onClick={onClose}
+                className="px-4 py-2 text-xs font-medium text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-xl transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                type="submit"
+                disabled={isSubmitting}
+                className="px-5 py-2 text-xs font-semibold text-white bg-sky-600 hover:bg-sky-500 rounded-xl shadow-md shadow-sky-500/20 transition-all disabled:opacity-50"
+              >
+                {isSubmitting ? 'Saving...' : 'Save Changes'}
+              </button>
+            </div>
           </div>
         </form>
       </div>

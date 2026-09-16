@@ -5,9 +5,39 @@ import { AuthenticatedRequest } from '../types/index.js';
 export const getNotifications = async (req: AuthenticatedRequest, res: Response) => {
   const user = req.user!;
 
+  const whereClause: any = { userId: user.userId };
+
+  // Strict role scoping per specification:
+  // 1. Admin: ONLY receives notifications about project completion status
+  if (user.role === 'ADMIN') {
+    whereClause.title = { contains: 'Project Completed' };
+  }
+  // 2. PM: ONLY receives notifications about project status and task review/overdue status
+  else if (user.role === 'PM') {
+    whereClause.title = {
+      in: [
+        'Project Completed! 🎉',
+        'Project Completed',
+        'Task Ready for Review',
+        'Task Overdue Alert',
+        'Task Changes Requested',
+      ],
+    };
+  }
+  // 3. Developer: ONLY receives notifications for assigned tasks, changes requested, or overdue
+  else if (user.role === 'DEVELOPER') {
+    whereClause.title = {
+      in: [
+        'New Task Assigned',
+        'Task Changes Requested',
+        'Task Overdue Alert',
+      ],
+    };
+  }
+
   const [notifications, unreadCount] = await Promise.all([
     prisma.notification.findMany({
-      where: { userId: user.userId },
+      where: whereClause,
       orderBy: { createdAt: 'desc' },
       take: 50,
       include: {
@@ -15,7 +45,7 @@ export const getNotifications = async (req: AuthenticatedRequest, res: Response)
       },
     }),
     prisma.notification.count({
-      where: { userId: user.userId, isRead: false },
+      where: { ...whereClause, isRead: false },
     }),
   ]);
 
@@ -71,8 +101,31 @@ export const markNotificationRead = async (req: AuthenticatedRequest, res: Respo
 export const markAllNotificationsRead = async (req: AuthenticatedRequest, res: Response) => {
   const user = req.user!;
 
+  const whereClause: any = { userId: user.userId, isRead: false };
+  if (user.role === 'ADMIN') {
+    whereClause.title = { contains: 'Project Completed' };
+  } else if (user.role === 'PM') {
+    whereClause.title = {
+      in: [
+        'Project Completed! 🎉',
+        'Project Completed',
+        'Task Ready for Review',
+        'Task Overdue Alert',
+        'Task Changes Requested',
+      ],
+    };
+  } else if (user.role === 'DEVELOPER') {
+    whereClause.title = {
+      in: [
+        'New Task Assigned',
+        'Task Changes Requested',
+        'Task Overdue Alert',
+      ],
+    };
+  }
+
   await prisma.notification.updateMany({
-    where: { userId: user.userId, isRead: false },
+    where: whereClause,
     data: { isRead: true },
   });
 
@@ -82,3 +135,4 @@ export const markAllNotificationsRead = async (req: AuthenticatedRequest, res: R
     message: 'All notifications marked as read',
   });
 };
+
