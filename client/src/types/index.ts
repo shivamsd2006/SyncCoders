@@ -55,6 +55,7 @@ export interface Task {
     id: string;
     title: string;
     createdBy?: string;
+    status?: ProjectStatus;
   };
   assignedTo?: string | null;
   assignee?: {

@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { Trash2, AlertTriangle, X } from 'lucide-react';
 import { api } from '../api/client.js';
 import { useQueryClient } from '@tanstack/react-query';
+import { getCleanErrorMessage } from '../utils/errors.js';
 
 interface DeleteProjectModalProps {
   isOpen: boolean;
@@ -43,13 +44,10 @@ export const DeleteProjectModal: React.FC<DeleteProjectModalProps> = ({
         onSuccess?.();
         onClose();
       } else {
-        setError(res.data.error?.message || 'Failed to delete project');
+        setError('Request is not acceptable');
       }
     } catch (err: any) {
-      setError(
-        err.response?.data?.error?.message ||
-          'Failed to delete project. Please check permissions.'
-      );
+      setError(getCleanErrorMessage(err, 'Failed to delete project. Please check permissions.'));
     } finally {
       setIsDeleting(false);
     }

@@ -6,7 +6,7 @@ import { DevStats, Task } from '../types/index.js';
 import { ActivityFeed } from '../components/ActivityFeed.js';
 import { TaskFilters } from '../components/TaskFilters.js';
 import { TaskCard } from '../components/TaskCard.js';
-import { CheckSquare, AlertTriangle, Clock, ShieldCheck } from 'lucide-react';
+import { CheckSquare, AlertTriangle, Clock } from 'lucide-react';
 
 export const DevDashboard: React.FC = () => {
   const [searchParams] = useSearchParams();
@@ -95,17 +95,10 @@ export const DevDashboard: React.FC = () => {
               <h3 className="text-base font-bold text-slate-900 dark:text-slate-100">
                 Your Assigned Tasks ({processedTasks.length})
               </h3>
-              <p className="text-xs text-slate-500 dark:text-slate-400">
-                Sorted by Priority (Critical → Low) then Due Date
-              </p>
-            </div>
-            <div className="flex items-center space-x-1.5 text-xs text-emerald-600 dark:text-emerald-400 bg-emerald-500/10 px-3 py-1 rounded-full font-medium">
-              <ShieldCheck className="h-3.5 w-3.5" />
-              <span>RBAC Scoped to You</span>
             </div>
           </div>
 
-          <TaskFilters tasksToExport={processedTasks} showUrgencySort={false} />
+          <TaskFilters showUrgencySort={false} />
 
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             {processedTasks.length === 0 ? (

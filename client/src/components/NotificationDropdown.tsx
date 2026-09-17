@@ -1,7 +1,7 @@
-import React from 'react';
+import React, { useEffect } from 'react';
 import { useSocket } from '../context/SocketContext.js';
 import { api } from '../api/client.js';
-import { Check, CheckCheck, Bell, Clock } from 'lucide-react';
+import { Check, CheckCheck, Bell, Clock, X } from 'lucide-react';
 import { formatDistanceToNow } from 'date-fns';
 
 interface Props {
@@ -16,6 +16,17 @@ export const NotificationDropdown: React.FC<Props> = ({ isOpen, onClose }) => {
     markNotificationAsRead,
     markAllNotificationsAsRead,
   } = useSocket();
+
+  useEffect(() => {
+    if (!isOpen) return;
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        onClose();
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [isOpen, onClose]);
 
   if (!isOpen) return null;
 
@@ -43,9 +54,9 @@ export const NotificationDropdown: React.FC<Props> = ({ isOpen, onClose }) => {
       {/* Backdrop */}
       <div className="fixed inset-0 z-40" onClick={onClose} />
 
-      <div className="absolute right-0 mt-2 w-80 sm:w-96 rounded-xl border border-slate-200 bg-white shadow-2xl dark:border-slate-800 dark:bg-slate-900 z-50 overflow-hidden animate-in fade-in slide-in-from-top-2 duration-150">
+      <div className="absolute right-0 mt-2 w-80 sm:w-96 rounded-xl border border-slate-200 bg-white shadow-2xl dark:border-slate-800 dark:bg-slate-900 z-50 overflow-hidden animate-in fade-in slide-in-from-top-2 duration-150 flex flex-col max-h-[30rem]">
         {/* Header */}
-        <div className="flex items-center justify-between border-b border-slate-100 px-4 py-3 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-900/50">
+        <div className="flex items-center justify-between border-b border-slate-100 px-4 py-3 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-900/50 shrink-0">
           <div className="flex items-center space-x-2">
             <Bell className="h-4 w-4 text-sky-500" />
             <span className="font-semibold text-sm text-slate-800 dark:text-slate-200">
@@ -57,19 +68,30 @@ export const NotificationDropdown: React.FC<Props> = ({ isOpen, onClose }) => {
               </span>
             )}
           </div>
-          {unreadNotificationCount > 0 && (
+          <div className="flex items-center space-x-2">
+            {unreadNotificationCount > 0 && (
+              <button
+                onClick={handleMarkAllRead}
+                className="flex items-center space-x-1 text-xs font-medium text-sky-600 hover:text-sky-700 dark:text-sky-400 dark:hover:text-sky-300 transition-colors"
+                title="Mark all notifications as read"
+              >
+                <CheckCheck className="h-3.5 w-3.5" />
+                <span>Mark all read</span>
+              </button>
+            )}
             <button
-              onClick={handleMarkAllRead}
-              className="flex items-center space-x-1 text-xs font-medium text-sky-600 hover:text-sky-700 dark:text-sky-400 dark:hover:text-sky-300 transition-colors"
+              onClick={onClose}
+              className="p-1 rounded-lg text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
+              title="Close notifications"
+              aria-label="Close notifications"
             >
-              <CheckCheck className="h-3.5 w-3.5" />
-              <span>Mark all read</span>
+              <X className="h-4 w-4" />
             </button>
-          )}
+          </div>
         </div>
 
         {/* List */}
-        <div className="max-h-80 overflow-y-auto divide-y divide-slate-100 dark:divide-slate-800/60">
+        <div className="max-h-80 overflow-y-auto divide-y divide-slate-100 dark:divide-slate-800/60 flex-1">
           {notifications.length === 0 ? (
             <div className="py-8 text-center text-sm text-slate-400 dark:text-slate-500">
               No notifications yet
@@ -116,6 +138,23 @@ export const NotificationDropdown: React.FC<Props> = ({ isOpen, onClose }) => {
               </div>
             ))
           )}
+        </div>
+
+        {/* Footer with Close Button */}
+        <div className="flex items-center justify-between border-t border-slate-100 px-4 py-2.5 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-900/50 shrink-0">
+          <span className="text-xs text-slate-500 dark:text-slate-400">
+            {notifications.length === 0
+              ? 'No notifications'
+              : unreadNotificationCount === 0
+              ? 'All notifications read'
+              : `${unreadNotificationCount} unread`}
+          </span>
+          <button
+            onClick={onClose}
+            className="rounded-lg bg-slate-200/70 hover:bg-slate-200 px-3 py-1 text-xs font-medium text-slate-700 dark:bg-slate-800 dark:text-slate-300 dark:hover:bg-slate-700 dark:hover:text-white transition-colors"
+          >
+            Close
+          </button>
         </div>
       </div>
     </>

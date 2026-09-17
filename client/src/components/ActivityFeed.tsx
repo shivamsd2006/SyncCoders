@@ -20,18 +20,27 @@ export const ActivityFeed: React.FC<Props> = ({
   const [isLoading, setIsLoading] = useState(true);
   const [filterQuery, setFilterQuery] = useState('');
 
-  // Fetch initial 20 missed events from PostgreSQL database (Offline Catchup)
+  // Fetch initial missed events from PostgreSQL database (Offline Catchup)
   useEffect(() => {
     let isMounted = true;
 
     const fetchMissedEvents = async () => {
       try {
         const res = await api.get('/activity', {
-          params: { limit: maxItems },
+          params: { limit: maxItems, ...(projectId ? { projectId } : {}) },
         });
 
         if (isMounted && res.data.success) {
-          setActivities(res.data.data.activities);
+          const fetchedActivities = res.data.data.activities || [];
+          setActivities((prev) => {
+            const combined = [...fetchedActivities, ...prev];
+            const seen = new Set<string>();
+            return combined.filter((item) => {
+              if (seen.has(item.id)) return false;
+              seen.add(item.id);
+              return true;
+            });
+          });
         }
       } catch (err) {
         console.error('Failed to load missed activity logs:', err);
@@ -45,7 +54,7 @@ export const ActivityFeed: React.FC<Props> = ({
     return () => {
       isMounted = false;
     };
-  }, [maxItems, setActivities]);
+  }, [maxItems, projectId, setActivities]);
 
   // If projectId is supplied, filter feed to this project
   const displayActivities = projectId
@@ -65,6 +74,16 @@ export const ActivityFeed: React.FC<Props> = ({
       a.projectName?.toLowerCase().includes(q)
     );
   });
+
+  // Guarantee key uniqueness to prevent duplicate React child keys
+  const uniqueFilteredActivities = React.useMemo(() => {
+    const seen = new Set<string>();
+    return filteredActivities.filter((a) => {
+      if (!a.id || seen.has(a.id)) return false;
+      seen.add(a.id);
+      return true;
+    });
+  }, [filteredActivities]);
 
   return (
     <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm dark:border-slate-800 dark:bg-slate-900 transition-colors">
@@ -106,12 +125,12 @@ export const ActivityFeed: React.FC<Props> = ({
           <div className="py-12 text-center text-xs text-slate-400 dark:text-slate-500">
             Loading recent activity...
           </div>
-        ) : filteredActivities.length === 0 ? (
+        ) : uniqueFilteredActivities.length === 0 ? (
           <div className="py-12 text-center text-xs text-slate-400 dark:text-slate-500">
             {filterQuery ? 'No activities match the filter.' : 'No activity events recorded yet.'}
           </div>
         ) : (
-          filteredActivities.slice(0, maxItems).map((log) => (
+          uniqueFilteredActivities.slice(0, maxItems).map((log) => (
             <div
               key={log.id}
               className="py-3 flex items-start space-x-3 text-xs animate-in fade-in duration-200 hover:bg-slate-50/50 dark:hover:bg-slate-800/30 px-2 rounded-xl transition-colors"

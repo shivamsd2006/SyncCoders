@@ -1,16 +1,13 @@
 import React from 'react';
 import { useSearchParams } from 'react-router-dom';
-import { Filter, RotateCcw, Download, Flame, CheckCircle2 } from 'lucide-react';
-import { Task, TaskPriority, TaskStatus } from '../types/index.js';
-import { format } from 'date-fns';
+import { Filter, RotateCcw, Flame, CheckCircle2 } from 'lucide-react';
+import { TaskPriority, TaskStatus } from '../types/index.js';
 
 interface Props {
-  tasksToExport?: Task[];
   showUrgencySort?: boolean;
 }
 
 export const TaskFilters: React.FC<Props> = ({
-  tasksToExport,
   showUrgencySort = true,
 }) => {
   const [searchParams, setSearchParams] = useSearchParams();
@@ -33,36 +30,6 @@ export const TaskFilters: React.FC<Props> = ({
 
   const clearFilters = () => {
     setSearchParams(new URLSearchParams());
-  };
-
-  const handleExportCsv = () => {
-    if (!tasksToExport || tasksToExport.length === 0) {
-      alert('No tasks available to export.');
-      return;
-    }
-
-    const headers = ['ID', 'Title', 'Project', 'Assignee', 'Status', 'Priority', 'Due Date', 'Is Overdue'];
-    const rows = tasksToExport.map((t) => [
-      `"${t.id}"`,
-      `"${(t.title || '').replace(/"/g, '""')}"`,
-      `"${(t.project?.title || '').replace(/"/g, '""')}"`,
-      `"${(t.assignee?.name || 'Unassigned').replace(/"/g, '""')}"`,
-      `"${t.status}"`,
-      `"${t.priority}"`,
-      `"${t.dueDate ? format(new Date(t.dueDate), 'yyyy-MM-dd HH:mm') : ''}"`,
-      t.isOverdue ? '"YES"' : '"NO"',
-    ]);
-
-    const csvContent = [headers.join(','), ...rows.map((r) => r.join(','))].join('\n');
-    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement('a');
-    link.setAttribute('href', url);
-    link.setAttribute('download', `tasks-export-${new Date().toISOString().slice(0, 10)}.csv`);
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-    URL.revokeObjectURL(url);
   };
 
   const hasActiveFilters = Boolean(
@@ -156,18 +123,6 @@ export const TaskFilters: React.FC<Props> = ({
           </button>
         )}
       </div>
-
-      {/* Decision 20-B: Export to CSV */}
-      {tasksToExport && (
-        <button
-          type="button"
-          onClick={handleExportCsv}
-          className="flex items-center space-x-1.5 text-xs font-semibold px-3 py-1.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-700/80 shadow-sm transition-colors"
-        >
-          <Download className="h-3.5 w-3.5 text-sky-500" />
-          <span>Export CSV</span>
-        </button>
-      )}
     </div>
   );
 };

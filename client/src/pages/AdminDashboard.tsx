@@ -213,6 +213,7 @@ export const AdminDashboard: React.FC = () => {
               )}
             </div>
           </div>
+
         </div>
 
         {/* Right 1 Column: Global Real-Time Activity Feed */}

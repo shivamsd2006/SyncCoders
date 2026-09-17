@@ -2,7 +2,8 @@ import React, { useState } from 'react';
 import { api } from '../api/client.js';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Client } from '../types/index.js';
-import { X, FolderPlus, Plus, Trash2, AlertTriangle } from 'lucide-react';
+import { X, FolderPlus, Plus, Trash2, AlertTriangle, Check, Users } from 'lucide-react';
+import { getCleanErrorMessage } from '../utils/errors.js';
 
 interface Props {
   isOpen: boolean;
@@ -20,6 +21,8 @@ export const CreateProjectModal: React.FC<Props> = ({ isOpen, onClose }) => {
   const [newClientName, setNewClientName] = useState('');
   const [newClientEmail, setNewClientEmail] = useState('');
   const [newClientCompany, setNewClientCompany] = useState('');
+  const [isSavingClient, setIsSavingClient] = useState(false);
+  const [clientSuccessMsg, setClientSuccessMsg] = useState('');
 
   // Delete client confirmation state
   const [clientToDelete, setClientToDelete] = useState<Client | null>(null);
@@ -43,6 +46,42 @@ export const CreateProjectModal: React.FC<Props> = ({ isOpen, onClose }) => {
 
   if (!isOpen) return null;
 
+  const handleSaveNewClient = async () => {
+    if (isSavingClient) return;
+    if (!newClientName.trim()) {
+      setError('Please provide a client name');
+      return;
+    }
+
+    setIsSavingClient(true);
+    setError('');
+    setClientSuccessMsg('');
+
+    try {
+      const res = await api.post('/clients', {
+        name: newClientName.trim(),
+        email: newClientEmail.trim() || undefined,
+        company: newClientCompany.trim() || undefined,
+      });
+
+      const createdClient = res.data?.data?.client;
+      await queryClient.invalidateQueries({ queryKey: ['clients'] });
+
+      if (createdClient?.id) {
+        setClientId(createdClient.id);
+      }
+      setNewClientName('');
+      setNewClientEmail('');
+      setNewClientCompany('');
+      setClientMode('existing');
+      setClientSuccessMsg(`Client "${createdClient?.name || 'New Client'}" saved and selected!`);
+    } catch (err: any) {
+      setError(getCleanErrorMessage(err, 'Failed to save client'));
+    } finally {
+      setIsSavingClient(false);
+    }
+  };
+
   const handleDeleteClient = async () => {
     if (!clientToDelete) return;
 
@@ -50,6 +89,7 @@ export const CreateProjectModal: React.FC<Props> = ({ isOpen, onClose }) => {
     setError('');
 
     try {
+      const deletedName = clientToDelete.name;
       await api.delete(`/clients/${clientToDelete.id}`);
       if (clientId === clientToDelete.id) {
         setClientId('');
@@ -58,8 +98,9 @@ export const CreateProjectModal: React.FC<Props> = ({ isOpen, onClose }) => {
       queryClient.invalidateQueries({ queryKey: ['projects'] });
       queryClient.invalidateQueries({ queryKey: ['stats'] });
       setClientToDelete(null);
+      setClientSuccessMsg(`Client "${deletedName}" was deleted successfully.`);
     } catch (err: any) {
-      setError(err.response?.data?.error?.message || 'Failed to delete client');
+      setError(getCleanErrorMessage(err, 'Request is not acceptable'));
     } finally {
       setIsDeletingClient(false);
     }
@@ -80,15 +121,15 @@ export const CreateProjectModal: React.FC<Props> = ({ isOpen, onClose }) => {
 
       // If user chose to write a new client, create it first
       if (clientMode === 'write') {
-        if (!newClientName.trim() || !newClientEmail.trim()) {
-          setError('Please provide client name and email');
+        if (!newClientName.trim()) {
+          setError('Please provide a client name');
           setIsSubmitting(false);
           return;
         }
 
         const clientRes = await api.post('/clients', {
           name: newClientName.trim(),
-          email: newClientEmail.trim(),
+          email: newClientEmail.trim() || undefined,
           company: newClientCompany.trim() || undefined,
         });
 
@@ -123,7 +164,7 @@ export const CreateProjectModal: React.FC<Props> = ({ isOpen, onClose }) => {
       setShowManageClients(false);
       onClose();
     } catch (err: any) {
-      setError(err.response?.data?.error?.message || 'Failed to create project');
+      setError(getCleanErrorMessage(err, 'Request is not acceptable'));
     } finally {
       setIsSubmitting(false);
     }
@@ -154,6 +195,13 @@ export const CreateProjectModal: React.FC<Props> = ({ isOpen, onClose }) => {
               <X className="h-5 w-5" />
             </button>
           </div>
+
+          {clientSuccessMsg && (
+            <div className="mt-4 p-3 rounded-xl bg-emerald-500/10 border border-emerald-200 dark:border-emerald-900/50 text-xs font-semibold text-emerald-600 dark:text-emerald-400 flex items-center space-x-1.5">
+              <Check className="h-4 w-4 shrink-0" />
+              <span>{clientSuccessMsg}</span>
+            </div>
+          )}
 
           {error && (
             <div className="mt-4 p-3 rounded-xl bg-rose-500/10 border border-rose-200 dark:border-rose-900/50 text-xs font-semibold text-rose-600 dark:text-rose-400">
@@ -187,6 +235,7 @@ export const CreateProjectModal: React.FC<Props> = ({ isOpen, onClose }) => {
                   onClick={() => {
                     setClientMode(clientMode === 'existing' ? 'write' : 'existing');
                     setError('');
+                    setClientSuccessMsg('');
                   }}
                   className="text-[11px] font-semibold text-sky-600 dark:text-sky-400 hover:text-sky-500 flex items-center space-x-1 py-0.5 px-1.5 rounded-md hover:bg-sky-50 dark:hover:bg-sky-950/40 transition-colors"
                 >
@@ -203,11 +252,15 @@ export const CreateProjectModal: React.FC<Props> = ({ isOpen, onClose }) => {
 
               {clientMode === 'existing' ? (
                 <div className="space-y-2">
-                  <div className="flex items-center space-x-2">
+                  <div>
                     <select
                       value={clientId}
-                      onChange={(e) => setClientId(e.target.value)}
-                      className="flex-1 text-xs rounded-xl border border-slate-200 bg-slate-50 px-3.5 py-2.5 dark:border-slate-700 dark:bg-slate-800 text-slate-800 dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-sky-500/20"
+                      onChange={(e) => {
+                        setClientId(e.target.value);
+                        setError('');
+                        setClientSuccessMsg('');
+                      }}
+                      className="w-full text-xs rounded-xl border border-slate-200 bg-slate-50 px-3.5 py-2.5 dark:border-slate-700 dark:bg-slate-800 text-slate-800 dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-sky-500/20"
                     >
                       <option value="">
                         {clients.length === 0
@@ -220,23 +273,10 @@ export const CreateProjectModal: React.FC<Props> = ({ isOpen, onClose }) => {
                         </option>
                       ))}
                     </select>
-
-                    {clientId && (
-                      <button
-                        type="button"
-                        onClick={() => {
-                          if (selectedClient) setClientToDelete(selectedClient);
-                        }}
-                        className="p-2.5 rounded-xl border border-rose-200 dark:border-rose-900/60 bg-rose-50 dark:bg-rose-950/40 text-rose-600 dark:text-rose-400 hover:bg-rose-100 transition-colors"
-                        title="Delete selected client"
-                      >
-                        <Trash2 className="h-4 w-4" />
-                      </button>
-                    )}
                   </div>
 
                   {clients.length > 0 && (
-                    <div className="flex items-center justify-between text-[11px] text-slate-400 px-1">
+                    <div className="flex items-center justify-between text-[11px] text-slate-400 px-1 pt-1">
                       <span>
                         {selectedClient
                           ? `${selectedClient.name} (${selectedClient.email})`
@@ -247,65 +287,81 @@ export const CreateProjectModal: React.FC<Props> = ({ isOpen, onClose }) => {
                         onClick={() => setShowManageClients(!showManageClients)}
                         className="hover:text-slate-600 dark:hover:text-slate-200 underline font-medium"
                       >
-                        {showManageClients ? 'Hide client list' : 'Manage / Delete clients'}
+                        {showManageClients ? 'Hide client list' : `Manage / Delete clients (${clients.length})`}
                       </button>
                     </div>
                   )}
 
                   {/* Expandable Client Management List */}
                   {showManageClients && clients.length > 0 && (
-                    <div className="max-h-40 overflow-y-auto rounded-xl border border-slate-200 dark:border-slate-800 divide-y divide-slate-100 dark:divide-slate-800/60 bg-slate-50/50 dark:bg-slate-900/50 p-1">
-                      {clients.map((c) => (
-                        <div
-                          key={c.id}
-                          className={`flex items-center justify-between p-2 rounded-lg text-xs transition-colors ${
-                            clientId === c.id
-                              ? 'bg-sky-50 dark:bg-sky-950/40 text-sky-900 dark:text-sky-200'
-                              : 'hover:bg-slate-100 dark:hover:bg-slate-800/60'
-                          }`}
-                        >
+                    <div className="space-y-1.5 p-2.5 rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50/70 dark:bg-slate-900/70">
+                      <div className="text-[10px] font-semibold text-slate-500 dark:text-slate-400 px-1">
+                        Click a client to select, or click Delete to remove:
+                      </div>
+                      <div className="max-h-40 overflow-y-auto divide-y divide-slate-100 dark:divide-slate-800 rounded-lg border border-slate-200/60 dark:border-slate-800/60 bg-white dark:bg-slate-900">
+                        {clients.map((c) => (
                           <div
-                            className="flex-1 cursor-pointer pr-2"
-                            onClick={() => setClientId(c.id)}
+                            key={c.id}
+                            className={`flex items-center justify-between p-2 text-xs transition-colors ${
+                              clientId === c.id
+                                ? 'bg-sky-50 dark:bg-sky-950/40 text-sky-900 dark:text-sky-200'
+                                : 'hover:bg-slate-50 dark:hover:bg-slate-800/40'
+                            }`}
                           >
-                            <div className="font-semibold text-slate-800 dark:text-slate-200">
-                              {c.name}{' '}
-                              {c.company && (
-                                <span className="text-[10px] text-slate-400 font-normal">
-                                  ({c.company})
-                                </span>
-                              )}
+                            <div
+                              className="flex-1 cursor-pointer pr-2"
+                              onClick={() => {
+                                setClientId(c.id);
+                                setError('');
+                              }}
+                            >
+                              <div className="font-semibold text-slate-800 dark:text-slate-200 flex items-center space-x-1.5">
+                                <span>{c.name}</span>
+                                {c.company && (
+                                  <span className="text-[10px] text-slate-400 font-normal">
+                                    ({c.company})
+                                  </span>
+                                )}
+                                {clientId === c.id && (
+                                  <span className="text-[9px] font-bold px-1.5 py-0.5 rounded bg-sky-100 text-sky-700 dark:bg-sky-900 dark:text-sky-300">
+                                    Selected
+                                  </span>
+                                )}
+                              </div>
+                              <div className="text-[10px] text-slate-400">
+                                {c.email} · {c._count?.projects ?? 0} project(s)
+                              </div>
                             </div>
-                            <div className="text-[10px] text-slate-400">
-                              {c.email} · {c._count?.projects ?? 0} projects
-                            </div>
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setClientToDelete(c);
+                              }}
+                              className="flex items-center space-x-1 px-2 py-1 rounded-md text-[11px] font-medium text-rose-600 dark:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-950/50 transition-colors"
+                              title={`Delete client ${c.name}`}
+                            >
+                              <Trash2 className="h-3 w-3" />
+                              <span>Delete</span>
+                            </button>
                           </div>
-                          <button
-                            type="button"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              setClientToDelete(c);
-                            }}
-                            className="p-1 rounded-md text-slate-400 hover:text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-950/50 transition-colors"
-                            title={`Delete client ${c.name}`}
-                          >
-                            <Trash2 className="h-3.5 w-3.5" />
-                          </button>
-                        </div>
-                      ))}
+                        ))}
+                      </div>
                     </div>
                   )}
                 </div>
               ) : (
                 /* Write New Client Form */
                 <div className="p-3.5 rounded-xl border border-sky-200/80 bg-sky-50/30 dark:border-sky-900/50 dark:bg-sky-950/20 space-y-2.5">
-                  <div className="text-[11px] font-semibold text-sky-800 dark:text-sky-300">
-                    Write New Client Details
+                  <div className="flex items-center justify-between">
+                    <div className="text-[11px] font-semibold text-sky-800 dark:text-sky-300">
+                      Write New Client Details
+                    </div>
+                    <span className="text-[10px] text-slate-400">Will be saved to client list</span>
                   </div>
                   <div>
                     <input
                       type="text"
-                      required={clientMode === 'write'}
                       value={newClientName}
                       onChange={(e) => setNewClientName(e.target.value)}
                       placeholder="Client or Contact Name *"
@@ -315,10 +371,9 @@ export const CreateProjectModal: React.FC<Props> = ({ isOpen, onClose }) => {
                   <div>
                     <input
                       type="email"
-                      required={clientMode === 'write'}
                       value={newClientEmail}
                       onChange={(e) => setNewClientEmail(e.target.value)}
-                      placeholder="Client Email Address *"
+                      placeholder="Client Email Address (Optional)"
                       className="w-full text-xs rounded-xl border border-slate-200 bg-white px-3 py-2 dark:border-slate-700 dark:bg-slate-800 text-slate-800 dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-sky-500/20"
                     />
                   </div>
@@ -330,6 +385,27 @@ export const CreateProjectModal: React.FC<Props> = ({ isOpen, onClose }) => {
                       placeholder="Company / Organization Name (Optional)"
                       className="w-full text-xs rounded-xl border border-slate-200 bg-white px-3 py-2 dark:border-slate-700 dark:bg-slate-800 text-slate-800 dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-sky-500/20"
                     />
+                  </div>
+                  <div className="flex items-center justify-end space-x-2 pt-1">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setClientMode('existing');
+                        setError('');
+                      }}
+                      className="px-3 py-1.5 text-xs text-slate-500 hover:text-slate-700 dark:hover:text-slate-300"
+                    >
+                      Cancel
+                    </button>
+                    <button
+                      type="button"
+                      disabled={isSavingClient || !newClientName.trim()}
+                      onClick={handleSaveNewClient}
+                      className="flex items-center space-x-1.5 px-3.5 py-1.5 rounded-xl bg-sky-600 hover:bg-sky-500 text-white text-xs font-semibold shadow-sm transition-all disabled:opacity-50"
+                    >
+                      <Check className="h-3.5 w-3.5" />
+                      <span>{isSavingClient ? 'Saving Client...' : 'Save & Select Client'}</span>
+                    </button>
                   </div>
                 </div>
               )}

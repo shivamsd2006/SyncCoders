@@ -75,7 +75,12 @@ export const SocketProvider: React.FC<{ children: React.ReactNode }> = ({ childr
 
     // Real-time role-filtered activity feed
     s.on('activity:new', (newActivity: ActivityLog) => {
-      setActivities((prev) => [newActivity, ...prev.slice(0, 49)]);
+      setActivities((prev) => {
+        if (prev.some((a) => a.id === newActivity.id)) {
+          return prev;
+        }
+        return [newActivity, ...prev.slice(0, 49)];
+      });
 
       // Automatically invalidate related queries to trigger seamless UI updates without full refresh
       queryClient.invalidateQueries({ queryKey: ['tasks'] });
