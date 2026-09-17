@@ -12,9 +12,9 @@ router.use(authenticate);
 
 const createClientSchema = {
   body: z.object({
-    name: z.string().min(2, 'Client name is required'),
-    email: z.string().email('Valid client email is required'),
-    company: z.string().optional(),
+    name: z.string().min(1, 'Client name is required'),
+    email: z.string().optional().nullable(),
+    company: z.string().optional().nullable(),
   }),
 };
 

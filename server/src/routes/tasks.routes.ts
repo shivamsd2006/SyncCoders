@@ -16,12 +16,20 @@ const router = Router();
 
 router.use(authenticate);
 
+const developerIdSchema = z
+  .string()
+  .uuid('Invalid developer ID')
+  .optional()
+  .nullable()
+  .or(z.literal(''))
+  .transform((val) => (val === '' ? null : val));
+
 const createTaskSchema = {
   body: z.object({
     projectId: z.string().uuid('Invalid project ID'),
     title: z.string().min(2, 'Task title is required'),
     description: z.string().optional(),
-    assignedTo: z.string().uuid('Invalid developer ID').optional().nullable(),
+    assignedTo: developerIdSchema,
     priority: z.nativeEnum(TaskPriority).optional(),
     dueDate: z.string().datetime({ offset: true }).or(z.string().min(10)),
   }),
@@ -35,7 +43,7 @@ const updateTaskSchema = {
     status: z.nativeEnum(TaskStatus).optional(),
     title: z.string().min(2).optional(),
     description: z.string().optional(),
-    assignedTo: z.string().uuid().optional().nullable(),
+    assignedTo: developerIdSchema,
     priority: z.nativeEnum(TaskPriority).optional(),
     dueDate: z.string().datetime({ offset: true }).or(z.string().min(10)).optional(),
     rejectionReason: z.string().optional(),

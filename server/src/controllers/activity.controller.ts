@@ -7,19 +7,51 @@ export const getActivityFeed = async (req: AuthenticatedRequest, res: Response) 
   const user = req.user!;
   const limit = req.query.limit ? Math.min(parseInt(req.query.limit as string, 10), 100) : 20;
 
+  const { projectId } = req.query;
   const where: Prisma.TaskActivityLogWhereInput = {};
 
   // 1. Role-based scoping of historical activity feed
-  if (user.role === 'DEVELOPER') {
-    // Developer sees activity only on tasks currently or previously assigned to them
-    where.task = { assignedTo: user.userId };
-  } else if (user.role === 'PM') {
-    // PM sees activity only from their own projects
-    where.task = {
-      project: { createdBy: user.userId },
-    };
+  if (projectId && typeof projectId === 'string') {
+    if (user.role === 'DEVELOPER') {
+      // Developer can only see activity for a specific project if currently assigned to at least one task in it
+      where.task = {
+        projectId,
+        project: {
+          tasks: {
+            some: {
+              assignedTo: user.userId,
+            },
+          },
+        },
+      };
+    } else if (user.role === 'PM') {
+      where.task = {
+        projectId,
+        project: { createdBy: user.userId },
+      };
+    } else {
+      where.task = { projectId };
+    }
+  } else {
+    if (user.role === 'DEVELOPER') {
+      // Developer sees activity of all projects where he/she is currently assigned
+      where.task = {
+        project: {
+          tasks: {
+            some: {
+              assignedTo: user.userId,
+            },
+          },
+        },
+      };
+    } else if (user.role === 'PM') {
+      // PM sees activity only from their own projects
+      where.task = {
+        project: { createdBy: user.userId },
+      };
+    }
+    // Admin sees activity across all projects (no filter on where)
   }
-  // Admin sees activity across all projects (no filter on where)
 
   const logs = await prisma.taskActivityLog.findMany({
     where,

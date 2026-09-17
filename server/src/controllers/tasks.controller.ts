@@ -101,78 +101,98 @@ export async function syncProjectStatus(projectId: string) {
   }
 }
 
-export const getTasks = async (req: AuthenticatedRequest, res: Response) => {
-  const user = req.user!;
-  const { status, priority, projectId, dueDateFrom, dueDateTo, isOverdue } = req.query;
+export const getTasks = async (req: AuthenticatedRequest, res: Response, next: any): Promise<any> => {
+  try {
+    const user = req.user!;
+    const { status, priority, projectId, dueDateFrom, dueDateTo, isOverdue, scope } = req.query;
 
-  const where: Prisma.TaskWhereInput = {};
+    const where: Prisma.TaskWhereInput = {};
 
-  // 1. Strict Role Scoping
-  if (user.role === 'DEVELOPER') {
-    where.assignedTo = user.userId;
-  } else if (user.role === 'PM') {
-    where.project = { createdBy: user.userId };
-  }
+    // 1. Role Scoping
+    if (user.role === 'DEVELOPER') {
+      where.assignedTo = user.userId;
+    } else if (user.role === 'PM') {
+      // If PM explicitly specifies scope='my', restrict to their projects.
+      // Otherwise, allow PM to view overall tasks across all projects combining all available projects.
+      if (scope === 'my') {
+        where.project = { createdBy: user.userId };
+      }
+    }
 
-  // 2. Query Filters
-  if (status && Object.values(TaskStatus).includes(status as TaskStatus)) {
-    where.status = status as TaskStatus;
-  }
+    // 2. Query Filters
+    if (status && Object.values(TaskStatus).includes(status as TaskStatus)) {
+      where.status = status as TaskStatus;
+    }
 
-  if (priority && Object.values(TaskPriority).includes(priority as TaskPriority)) {
-    where.priority = priority as TaskPriority;
-  }
+    if (priority && Object.values(TaskPriority).includes(priority as TaskPriority)) {
+      where.priority = priority as TaskPriority;
+    }
 
-  if (projectId && typeof projectId === 'string') {
-    // If PM, ensure they own the requested project
-    if (user.role === 'PM') {
+    if (projectId && typeof projectId === 'string') {
       where.projectId = projectId;
-      where.project = { createdBy: user.userId };
-    } else if (user.role === 'ADMIN') {
-      where.projectId = projectId;
+      if (user.role === 'PM' && scope === 'my') {
+        where.project = { createdBy: user.userId };
+      }
     }
-  }
 
-  if (isOverdue === 'true') {
-    where.isOverdue = true;
-  } else if (isOverdue === 'false') {
-    where.isOverdue = false;
-  }
-
-  if (dueDateFrom || dueDateTo) {
-    where.dueDate = {};
-    if (dueDateFrom && typeof dueDateFrom === 'string') {
-      where.dueDate.gte = new Date(dueDateFrom);
+    if (isOverdue === 'true') {
+      where.status = { not: TaskStatus.DONE };
+      where.OR = [
+        { isOverdue: true },
+        { dueDate: { lt: new Date() } },
+      ];
+    } else if (isOverdue === 'false') {
+      where.isOverdue = false;
+      where.dueDate = { gte: new Date() };
     }
-    if (dueDateTo && typeof dueDateTo === 'string') {
-      where.dueDate.lte = new Date(dueDateTo);
+
+    if (dueDateFrom || dueDateTo) {
+      where.dueDate = {};
+      if (dueDateFrom && typeof dueDateFrom === 'string') {
+        where.dueDate.gte = new Date(dueDateFrom);
+      }
+      if (dueDateTo && typeof dueDateTo === 'string') {
+        where.dueDate.lte = new Date(dueDateTo);
+      }
     }
-  }
 
-  const tasks = await prisma.task.findMany({
-    where,
-    include: {
-      project: { select: { id: true, title: true, createdBy: true } },
-      assignee: { select: { id: true, name: true, email: true, username: true, headline: true, avatarUrl: true } },
-    },
-    orderBy: [
-      { dueDate: 'asc' },
-    ],
-  });
-
-  // Sort Developer tasks by Priority (CRITICAL > HIGH > MEDIUM > LOW) then Due Date
-  if (user.role === 'DEVELOPER') {
-    tasks.sort((a, b) => {
-      const pDiff = priorityOrder[b.priority] - priorityOrder[a.priority];
-      if (pDiff !== 0) return pDiff;
-      return new Date(a.dueDate).getTime() - new Date(b.dueDate).getTime();
+    const tasks = await prisma.task.findMany({
+      where,
+      include: {
+        project: { select: { id: true, title: true, createdBy: true, status: true } },
+        assignee: { select: { id: true, name: true, email: true, username: true, headline: true, avatarUrl: true } },
+      },
+      orderBy: [
+        { dueDate: 'asc' },
+      ],
     });
-  }
 
-  return res.json({
-    success: true,
-    data: { tasks },
-  });
+    // Sort Developer tasks by Priority (CRITICAL > HIGH > MEDIUM > LOW) then Due Date
+    if (user.role === 'DEVELOPER') {
+      tasks.sort((a, b) => {
+        const pDiff = priorityOrder[b.priority] - priorityOrder[a.priority];
+        if (pDiff !== 0) return pDiff;
+        return new Date(a.dueDate).getTime() - new Date(b.dueDate).getTime();
+      });
+    }
+
+    return res.json({
+      success: true,
+      data: { tasks },
+    });
+  } catch (err: any) {
+    if (err?.code === 'P1017' || err?.message?.includes('closed the connection')) {
+      try {
+        await prisma.$disconnect();
+        await prisma.$connect();
+        // Retry once
+        return getTasks(req, res, next);
+      } catch (retryErr) {
+        return next(retryErr);
+      }
+    }
+    return next(err);
+  }
 };
 
 export const getTaskById = async (req: AuthenticatedRequest, res: Response) => {
@@ -386,229 +406,217 @@ export const updateTask = async (req: AuthenticatedRequest, res: Response) => {
   const oldStatus = existing.status;
   const newStatus = status as TaskStatus;
 
-  // Execute atomic status update + activity log in a transaction
-  const result = await prisma.$transaction(async (tx) => {
-    const updatedTask = await tx.task.update({
-      where: { id },
-      data: {
-        status: status ?? existing.status,
-        title: user.role !== 'DEVELOPER' && title !== undefined ? title : existing.title,
-        description:
-          user.role !== 'DEVELOPER' && description !== undefined
-            ? description
-            : existing.description,
-        assignedTo:
-          user.role !== 'DEVELOPER' && assignedTo !== undefined
-            ? (assignedTo || null)
-            : existing.assignedTo,
-        priority:
-          user.role !== 'DEVELOPER' && priority !== undefined ? priority : existing.priority,
-        dueDate:
-          user.role !== 'DEVELOPER' && dueDate !== undefined
-            ? new Date(dueDate)
-            : existing.dueDate,
-        // If moved to DONE, clear overdue flag if desired, or maintain historical flag
-        isOverdue: status === TaskStatus.DONE ? false : existing.isOverdue,
-      },
-      include: {
-        project: { select: { id: true, title: true, createdBy: true } },
-        assignee: { select: { id: true, name: true, email: true, username: true, headline: true, avatarUrl: true } },
-      },
-    });
-
-    let activityLog = null;
-    let reassignLog = null;
-    let notification = null;
-    let notifyUserId: string | null = null;
-    let assignNotification = null;
-
-    if (isStatusChanged) {
-      let formattedMessage = `${user.name} moved Task "${updatedTask.title}" from ${oldStatus} → ${newStatus}`;
-
-      // Decision 2-A & 3-B: If PM rejected IN_REVIEW -> IN_PROGRESS
-      if (oldStatus === TaskStatus.IN_REVIEW && newStatus === TaskStatus.IN_PROGRESS) {
-        if (rejectionReason) {
-          formattedMessage = `${user.name} requested changes on Task "${updatedTask.title}": "${rejectionReason}"`;
-        }
-        if (updatedTask.assignedTo) {
-          notification = await tx.notification.create({
-            data: {
-              userId: updatedTask.assignedTo,
-              taskId: updatedTask.id,
-              title: 'Task Changes Requested',
-              message: rejectionReason
-                ? `${user.name} requested changes: "${rejectionReason}"`
-                : `${user.name} moved "${updatedTask.title}" back to In Progress`,
-            },
-          });
-          notifyUserId = updatedTask.assignedTo;
-        }
-      } else if (newStatus === TaskStatus.IN_REVIEW) {
-        // If task moved to IN_REVIEW, notify the Project Manager who owns the project
-        notification = await tx.notification.create({
-          data: {
-            userId: existing.project.createdBy,
-            taskId: updatedTask.id,
-            title: 'Task Ready for Review',
-            message: `${user.name} moved "${updatedTask.title}" in "${existing.project.title}" to In Review`,
-          },
-        });
-        notifyUserId = existing.project.createdBy;
-      }
-
-      activityLog = await tx.taskActivityLog.create({
-        data: {
-          taskId: id,
-          userId: user.userId,
-          oldStatus,
-          newStatus,
-          formattedMessage,
-        },
-        include: {
-          user: {
-            select: {
-              id: true,
-              name: true,
-              username: true,
-              headline: true,
-              avatarUrl: true,
-            },
-          },
-        },
-      });
-    }
-
-    // Decision 9-B: If assignee changed by Admin or PM, log activity and notify new assignee
-    const isAssigneeChanged =
-      user.role !== 'DEVELOPER' &&
-      assignedTo !== undefined &&
-      assignedTo !== existing.assignedTo;
-
-    if (isAssigneeChanged) {
-      let reassignMessage = '';
-      if (assignedTo) {
-        const newAssignee = await tx.user.findUnique({
-          where: { id: assignedTo },
-          select: { name: true, role: true },
-        });
-        reassignMessage = `${user.name} reassigned Task "${updatedTask.title}" to ${newAssignee?.name || 'developer'}`;
-
-        // Per spec: ONLY developers receive "New Task Assigned" notifications
-        if (newAssignee && newAssignee.role === 'DEVELOPER') {
-          assignNotification = await tx.notification.create({
-            data: {
-              userId: assignedTo,
-              taskId: updatedTask.id,
-              title: 'New Task Assigned',
-              message: `${user.name} assigned you "${updatedTask.title}" in "${existing.project.title}"`,
-            },
-          });
-        }
-      } else {
-        reassignMessage = `${user.name} unassigned Task "${updatedTask.title}"`;
-      }
-
-      reassignLog = await tx.taskActivityLog.create({
-        data: {
-          taskId: id,
-          userId: user.userId,
-          oldStatus: updatedTask.status,
-          newStatus: updatedTask.status,
-          formattedMessage: reassignMessage,
-        },
-        include: {
-          user: {
-            select: {
-              id: true,
-              name: true,
-              username: true,
-              headline: true,
-              avatarUrl: true,
-            },
-          },
-        },
-      });
-    }
-
-    return {
-      updatedTask,
-      activityLog,
-      reassignLog,
-      notification,
-      notifyUserId,
-      assignNotification,
-      assignedToUser: assignedTo,
-    };
+  // Execute status update + activity log + notifications sequentially
+  const updatedTask = await prisma.task.update({
+    where: { id },
+    data: {
+      status: status ?? existing.status,
+      title: user.role !== 'DEVELOPER' && title !== undefined ? title : existing.title,
+      description:
+        user.role !== 'DEVELOPER' && description !== undefined
+          ? description
+          : existing.description,
+      assignedTo:
+        user.role !== 'DEVELOPER' && assignedTo !== undefined
+          ? (assignedTo || null)
+          : existing.assignedTo,
+      priority:
+        user.role !== 'DEVELOPER' && priority !== undefined ? priority : existing.priority,
+      dueDate:
+        user.role !== 'DEVELOPER' && dueDate !== undefined
+          ? new Date(dueDate)
+          : existing.dueDate,
+      // If moved to DONE, clear overdue flag if desired, or maintain historical flag
+      isOverdue: status === TaskStatus.DONE ? false : existing.isOverdue,
+    },
+    include: {
+      project: { select: { id: true, title: true, createdBy: true } },
+      assignee: { select: { id: true, name: true, email: true, username: true, headline: true, avatarUrl: true } },
+    },
   });
 
-  // Broadcast Real-Time Events via WebSocket outside the transaction
-  if (result.activityLog) {
-    broadcastActivity(
-      {
-        id: result.activityLog.id,
-        taskId: result.updatedTask.id,
+  let activityLog: any = null;
+  let reassignLog: any = null;
+  let notification: any = null;
+  let notifyUserId: string | null = null;
+  let assignNotification: any = null;
+
+  if (isStatusChanged) {
+    let formattedMessage = `${user.name} moved Task "${updatedTask.title}" from ${oldStatus} → ${newStatus}`;
+
+    // Decision 2-A & 3-B: If PM rejected IN_REVIEW -> IN_PROGRESS
+    if (oldStatus === TaskStatus.IN_REVIEW && newStatus === TaskStatus.IN_PROGRESS) {
+      if (rejectionReason) {
+        formattedMessage = `${user.name} requested changes on Task "${updatedTask.title}": "${rejectionReason}"`;
+      }
+      if (updatedTask.assignedTo) {
+        notification = await prisma.notification.create({
+          data: {
+            userId: updatedTask.assignedTo,
+            taskId: updatedTask.id,
+            title: 'Task Changes Requested',
+            message: rejectionReason
+              ? `${user.name} requested changes: "${rejectionReason}"`
+              : `${user.name} moved "${updatedTask.title}" back to In Progress`,
+          },
+        });
+        notifyUserId = updatedTask.assignedTo;
+      }
+    } else if (newStatus === TaskStatus.IN_REVIEW) {
+      // If task moved to IN_REVIEW, notify the Project Manager who owns the project
+      notification = await prisma.notification.create({
+        data: {
+          userId: existing.project.createdBy,
+          taskId: updatedTask.id,
+          title: 'Task Ready for Review',
+          message: `${user.name} moved "${updatedTask.title}" in "${existing.project.title}" to In Review`,
+        },
+      });
+      notifyUserId = existing.project.createdBy;
+    }
+
+    activityLog = await prisma.taskActivityLog.create({
+      data: {
+        taskId: id,
         userId: user.userId,
-        userName: user.name,
-        userUsername: result.activityLog.user?.username,
-        userHeadline: result.activityLog.user?.headline,
-        userAvatar: result.activityLog.user?.avatarUrl,
-        taskTitle: result.updatedTask.title,
-        projectId: result.updatedTask.projectId,
         oldStatus,
         newStatus,
-        formattedMessage: result.activityLog.formattedMessage,
-        createdAt: result.activityLog.createdAt.toISOString(),
+        formattedMessage,
       },
-      result.updatedTask.projectId,
-      existing.project.createdBy,
-      result.updatedTask.assignedTo
-    );
-  }
-
-  if (result.reassignLog) {
-    broadcastActivity(
-      {
-        id: result.reassignLog.id,
-        taskId: result.updatedTask.id,
-        userId: user.userId,
-        userName: user.name,
-        userUsername: result.reassignLog.user?.username,
-        userHeadline: result.reassignLog.user?.headline,
-        userAvatar: result.reassignLog.user?.avatarUrl,
-        taskTitle: result.updatedTask.title,
-        projectId: result.updatedTask.projectId,
-        oldStatus: result.updatedTask.status,
-        newStatus: result.updatedTask.status,
-        formattedMessage: result.reassignLog.formattedMessage,
-        createdAt: result.reassignLog.createdAt.toISOString(),
+      include: {
+        user: {
+          select: {
+            id: true,
+            name: true,
+            username: true,
+            headline: true,
+            avatarUrl: true,
+          },
+        },
       },
-      result.updatedTask.projectId,
-      existing.project.createdBy,
-      result.updatedTask.assignedTo
-    );
-  }
-
-  if (result.notification && result.notifyUserId) {
-    emitNotification(result.notifyUserId, {
-      id: result.notification.id,
-      userId: result.notifyUserId,
-      title: result.notification.title,
-      message: result.notification.message,
-      taskId: result.updatedTask.id,
-      isRead: false,
-      createdAt: result.notification.createdAt.toISOString(),
     });
   }
 
-  if (result.assignNotification && result.assignedToUser) {
-    emitNotification(result.assignedToUser, {
-      id: result.assignNotification.id,
-      userId: result.assignedToUser,
-      title: result.assignNotification.title,
-      message: result.assignNotification.message,
-      taskId: result.updatedTask.id,
+  // Decision 9-B: If assignee changed by Admin or PM, log activity and notify new assignee
+  const isAssigneeChanged =
+    user.role !== 'DEVELOPER' &&
+    assignedTo !== undefined &&
+    assignedTo !== existing.assignedTo;
+
+  if (isAssigneeChanged) {
+    let reassignMessage = '';
+    if (assignedTo) {
+      const newAssignee = await prisma.user.findUnique({
+        where: { id: assignedTo },
+        select: { name: true, role: true },
+      });
+      reassignMessage = `${user.name} reassigned Task "${updatedTask.title}" to ${newAssignee?.name || 'developer'}`;
+
+      // Per spec: ONLY developers receive "New Task Assigned" notifications
+      if (newAssignee && newAssignee.role === 'DEVELOPER') {
+        assignNotification = await prisma.notification.create({
+          data: {
+            userId: assignedTo,
+            taskId: updatedTask.id,
+            title: 'New Task Assigned',
+            message: `${user.name} assigned you "${updatedTask.title}" in "${existing.project.title}"`,
+          },
+        });
+      }
+    } else {
+      reassignMessage = `${user.name} unassigned Task "${updatedTask.title}"`;
+    }
+
+    reassignLog = await prisma.taskActivityLog.create({
+      data: {
+        taskId: id,
+        userId: user.userId,
+        oldStatus: updatedTask.status,
+        newStatus: updatedTask.status,
+        formattedMessage: reassignMessage,
+      },
+      include: {
+        user: {
+          select: {
+            id: true,
+            name: true,
+            username: true,
+            headline: true,
+            avatarUrl: true,
+          },
+        },
+      },
+    });
+  }
+
+  // Broadcast Real-Time Events via WebSocket
+  if (activityLog) {
+    broadcastActivity(
+      {
+        id: activityLog.id,
+        taskId: updatedTask.id,
+        userId: user.userId,
+        userName: user.name,
+        userUsername: activityLog.user?.username,
+        userHeadline: activityLog.user?.headline,
+        userAvatar: activityLog.user?.avatarUrl,
+        taskTitle: updatedTask.title,
+        projectId: updatedTask.projectId,
+        oldStatus,
+        newStatus,
+        formattedMessage: activityLog.formattedMessage,
+        createdAt: activityLog.createdAt.toISOString(),
+      },
+      updatedTask.projectId,
+      existing.project.createdBy,
+      updatedTask.assignedTo
+    );
+  }
+
+  if (reassignLog) {
+    broadcastActivity(
+      {
+        id: reassignLog.id,
+        taskId: updatedTask.id,
+        userId: user.userId,
+        userName: user.name,
+        userUsername: reassignLog.user?.username,
+        userHeadline: reassignLog.user?.headline,
+        userAvatar: reassignLog.user?.avatarUrl,
+        taskTitle: updatedTask.title,
+        projectId: updatedTask.projectId,
+        oldStatus: updatedTask.status,
+        newStatus: updatedTask.status,
+        formattedMessage: reassignLog.formattedMessage,
+        createdAt: reassignLog.createdAt.toISOString(),
+      },
+      updatedTask.projectId,
+      existing.project.createdBy,
+      updatedTask.assignedTo
+    );
+  }
+
+  if (notification && notifyUserId) {
+    emitNotification(notifyUserId, {
+      id: notification.id,
+      userId: notifyUserId,
+      title: notification.title,
+      message: notification.message,
+      taskId: updatedTask.id,
       isRead: false,
-      createdAt: result.assignNotification.createdAt.toISOString(),
+      createdAt: notification.createdAt.toISOString(),
+    });
+  }
+
+  if (assignNotification && assignedTo) {
+    emitNotification(assignedTo, {
+      id: assignNotification.id,
+      userId: assignedTo,
+      title: assignNotification.title,
+      message: assignNotification.message,
+      taskId: updatedTask.id,
+      isRead: false,
+      createdAt: assignNotification.createdAt.toISOString(),
     });
   }
 
@@ -618,7 +626,7 @@ export const updateTask = async (req: AuthenticatedRequest, res: Response) => {
 
   return res.json({
     success: true,
-    data: { task: result.updatedTask },
+    data: { task: updatedTask },
   });
 };
 

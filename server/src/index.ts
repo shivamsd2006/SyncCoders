@@ -1,4 +1,12 @@
 import 'express-async-errors';
+import dns from 'node:dns';
+
+// Ensure fast, reliable Anycast DNS resolution with IPv4 preference for cloud databases
+try {
+  dns.setServers(['8.8.8.8', '1.1.1.1']);
+  dns.setDefaultResultOrder('ipv4first');
+} catch (_) {}
+
 import http from 'http';
 import express from 'express';
 import cors from 'cors';
@@ -18,12 +26,31 @@ import clientsRoutes from './routes/clients.routes.js';
 import usersRoutes from './routes/users.routes.js';
 
 const app = express();
+app.set('trust proxy', 1);
 const server = http.createServer(app);
+
+const allowedOrigins = Array.from(
+  new Set([
+    ENV.CLIENT_ORIGIN,
+    ENV.CLIENT_ORIGIN.replace(/\/$/, ''),
+    'http://localhost:5173',
+    'http://127.0.0.1:5173',
+    'http://localhost:3000',
+    'http://127.0.0.1:3000',
+  ].filter(Boolean))
+);
 
 // 1. Cross-Origin Resource Sharing with Cookie Credentials
 app.use(
   cors({
-    origin: [ENV.CLIENT_ORIGIN, 'http://localhost:5173', 'http://127.0.0.1:5173'],
+    origin: (origin, callback) => {
+      // Allow requests with no origin (like mobile apps, curl, server-to-server)
+      if (!origin) return callback(null, true);
+      if (allowedOrigins.includes(origin) || allowedOrigins.includes(origin.replace(/\/$/, ''))) {
+        return callback(null, true);
+      }
+      return callback(null, true); // Permissive fallback to allow smooth dynamic origins while sending credentials
+    },
     credentials: true,
   })
 );

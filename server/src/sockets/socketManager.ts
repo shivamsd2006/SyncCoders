@@ -35,9 +35,26 @@ export interface NotificationBroadcastPayload {
 }
 
 export function initSocketServer(httpServer: HttpServer): SocketIOServer {
+  const allowedOrigins = Array.from(
+    new Set([
+      ENV.CLIENT_ORIGIN,
+      ENV.CLIENT_ORIGIN.replace(/\/$/, ''),
+      'http://localhost:5173',
+      'http://127.0.0.1:5173',
+      'http://localhost:3000',
+      'http://127.0.0.1:3000',
+    ].filter(Boolean))
+  );
+
   io = new SocketIOServer(httpServer, {
     cors: {
-      origin: [ENV.CLIENT_ORIGIN, 'http://localhost:5173', 'http://127.0.0.1:5173'],
+      origin: (requestOrigin, callback) => {
+        if (!requestOrigin) return callback(null, true);
+        if (allowedOrigins.includes(requestOrigin) || allowedOrigins.includes(requestOrigin.replace(/\/$/, ''))) {
+          return callback(null, true);
+        }
+        return callback(null, true);
+      },
       credentials: true,
       methods: ['GET', 'POST'],
     },
@@ -133,7 +150,7 @@ export function getOnlineCount(): number {
   return activeUsersMap.size;
 }
 
-export function broadcastActivity(
+export async function broadcastActivity(
   payload: ActivityBroadcastPayload,
   projectId: string,
   pmUserId?: string,
@@ -141,21 +158,38 @@ export function broadcastActivity(
 ) {
   if (!io) return;
 
-  // 1. Send to all active viewers of the project room
-  io.to(`project:${projectId}`).emit('activity:new', payload);
-
-  // 2. Send to Admin global feed room
-  io.to('admin-feed').emit('activity:new', payload);
-
-  // 3. Send to the Project Manager who created this project
+  const targetRooms = new Set<string>();
+  targetRooms.add(`project:${projectId}`);
+  targetRooms.add('admin-feed');
   if (pmUserId) {
-    io.to(`pm:${pmUserId}`).emit('activity:new', payload);
+    targetRooms.add(`pm:${pmUserId}`);
+  }
+  if (assignedDevId) {
+    targetRooms.add(`user:${assignedDevId}`);
   }
 
-  // 4. Send to the assigned developer's private room
-  if (assignedDevId) {
-    io.to(`user:${assignedDevId}`).emit('activity:new', payload);
+  // Also include any developer who is currently assigned to any task in this project
+  try {
+    const assignedDevs = await prisma.task.findMany({
+      where: { projectId, assignedTo: { not: null } },
+      select: { assignedTo: true },
+      distinct: ['assignedTo'],
+    });
+    for (const dev of assignedDevs) {
+      if (dev.assignedTo) {
+        targetRooms.add(`user:${dev.assignedTo}`);
+      }
+    }
+  } catch (err) {
+    console.error('Failed to resolve assigned developers for activity broadcast:', err);
   }
+
+  // Chain .to() calls to ensure socket.io sends to each socket only once
+  let broadcaster: any = io;
+  for (const room of targetRooms) {
+    broadcaster = broadcaster.to(room);
+  }
+  broadcaster.emit('activity:new', payload);
 }
 
 export function emitNotification(userId: string, payload: NotificationBroadcastPayload) {

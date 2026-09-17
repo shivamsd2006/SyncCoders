@@ -70,7 +70,7 @@ export const login = async (req: Request, res: Response) => {
     res.cookie('refreshToken', rawRefreshToken, {
       httpOnly: true,
       secure: ENV.NODE_ENV === 'production',
-      sameSite: ENV.NODE_ENV === 'production' ? 'strict' : 'lax',
+      sameSite: ENV.NODE_ENV === 'production' ? 'none' : 'lax',
       maxAge: REFRESH_TOKEN_EXPIRY_DAYS * 24 * 60 * 60 * 1000,
     });
 
@@ -173,7 +173,7 @@ export const logout = async (req: Request, res: Response) => {
     res.clearCookie('refreshToken', {
       httpOnly: true,
       secure: ENV.NODE_ENV === 'production',
-      sameSite: ENV.NODE_ENV === 'production' ? 'strict' : 'lax',
+      sameSite: ENV.NODE_ENV === 'production' ? 'none' : 'lax',
     });
     return res.json({
       success: true,
@@ -275,7 +275,7 @@ export const register = async (req: Request, res: Response) => {
     res.cookie('refreshToken', rawRefreshToken, {
       httpOnly: true,
       secure: ENV.NODE_ENV === 'production',
-      sameSite: ENV.NODE_ENV === 'production' ? 'strict' : 'lax',
+      sameSite: ENV.NODE_ENV === 'production' ? 'none' : 'lax',
       maxAge: REFRESH_TOKEN_EXPIRY_DAYS * 24 * 60 * 60 * 1000,
     });
 
