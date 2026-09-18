@@ -333,6 +333,53 @@ export const createTask = async (req: AuthenticatedRequest, res: Response) => {
     });
   }
 
+  // Log activity and broadcast to real-time stream
+  try {
+    const createActivityLog = await prisma.taskActivityLog.create({
+      data: {
+        taskId: task.id,
+        userId: user.userId,
+        oldStatus: TaskStatus.TODO,
+        newStatus: TaskStatus.TODO,
+        formattedMessage: `${user.name} created Task "${task.title}" (${task.priority} Priority)`,
+      },
+      include: {
+        user: {
+          select: {
+            id: true,
+            name: true,
+            username: true,
+            headline: true,
+            avatarUrl: true,
+          },
+        },
+      },
+    });
+
+    broadcastActivity(
+      {
+        id: createActivityLog.id,
+        taskId: task.id,
+        userId: user.userId,
+        userName: user.name,
+        userUsername: createActivityLog.user?.username,
+        userHeadline: createActivityLog.user?.headline,
+        userAvatar: createActivityLog.user?.avatarUrl,
+        taskTitle: task.title,
+        projectId: task.projectId,
+        oldStatus: TaskStatus.TODO,
+        newStatus: TaskStatus.TODO,
+        formattedMessage: createActivityLog.formattedMessage,
+        createdAt: createActivityLog.createdAt.toISOString(),
+      },
+      task.projectId,
+      project.createdBy,
+      task.assignedTo
+    );
+  } catch (err) {
+    console.error('Failed to create/broadcast activity log for newTask:', err);
+  }
+
   // Synchronize project status in case an active task was added to a previously completed project
   await syncProjectStatus(projectId);
 
@@ -549,7 +596,60 @@ export const updateTask = async (req: AuthenticatedRequest, res: Response) => {
     });
   }
 
+  // Log and broadcast Priority change
+  let priorityLog: any = null;
+  const isPriorityChanged =
+    user.role !== 'DEVELOPER' &&
+    priority !== undefined &&
+    priority !== existing.priority;
+
+  if (isPriorityChanged) {
+    priorityLog = await prisma.taskActivityLog.create({
+      data: {
+        taskId: id,
+        userId: user.userId,
+        oldStatus: updatedTask.status,
+        newStatus: updatedTask.status,
+        formattedMessage: `${user.name} changed priority of Task "${updatedTask.title}" from ${existing.priority} → ${priority}`,
+      },
+      include: {
+        user: {
+          select: {
+            id: true,
+            name: true,
+            username: true,
+            headline: true,
+            avatarUrl: true,
+          },
+        },
+      },
+    });
+  }
+
   // Broadcast Real-Time Events via WebSocket
+  if (priorityLog) {
+    broadcastActivity(
+      {
+        id: priorityLog.id,
+        taskId: updatedTask.id,
+        userId: user.userId,
+        userName: user.name,
+        userUsername: priorityLog.user?.username,
+        userHeadline: priorityLog.user?.headline,
+        userAvatar: priorityLog.user?.avatarUrl,
+        taskTitle: updatedTask.title,
+        projectId: updatedTask.projectId,
+        oldStatus: updatedTask.status,
+        newStatus: updatedTask.status,
+        formattedMessage: priorityLog.formattedMessage,
+        createdAt: priorityLog.createdAt.toISOString(),
+      },
+      updatedTask.projectId,
+      existing.project.createdBy,
+      updatedTask.assignedTo
+    );
+  }
+
   if (activityLog) {
     broadcastActivity(
       {

@@ -105,13 +105,44 @@ export const TaskCard: React.FC<Props> = ({ task }) => {
         {/* Top badges */}
         <div className="flex items-center justify-between gap-2 pb-3 border-b border-slate-100 dark:border-slate-800/60">
           <div className="flex items-center space-x-2">
-            <span
-              className={`text-[10px] font-bold tracking-wider uppercase px-2 py-0.5 rounded-full border ${getPriorityStyle(
-                task.priority
-              )}`}
-            >
-              {task.priority}
-            </span>
+            {!isDev ? (
+              <select
+                value={task.priority}
+                disabled={isUpdating}
+                onChange={async (e) => {
+                  const newPriority = e.target.value as TaskPriority;
+                  if (newPriority === task.priority) return;
+                  setIsUpdating(true);
+                  try {
+                    await api.patch(`/tasks/${task.id}`, { priority: newPriority });
+                    queryClient.invalidateQueries({ queryKey: ['tasks'] });
+                    queryClient.invalidateQueries({ queryKey: ['stats'] });
+                    queryClient.invalidateQueries({ queryKey: ['activity'] });
+                  } catch (err: any) {
+                    alert(err.response?.data?.error?.message || 'Failed to update priority');
+                  } finally {
+                    setIsUpdating(false);
+                  }
+                }}
+                className={`text-[10px] font-bold tracking-wider uppercase px-2 py-0.5 rounded-full border cursor-pointer focus:outline-none transition-all ${getPriorityStyle(
+                  task.priority
+                )}`}
+                title="Click to change Priority"
+              >
+                <option value="LOW" className="bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-200">LOW</option>
+                <option value="MEDIUM" className="bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-200">MEDIUM</option>
+                <option value="HIGH" className="bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-200">HIGH</option>
+                <option value="CRITICAL" className="bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-200">CRITICAL</option>
+              </select>
+            ) : (
+              <span
+                className={`text-[10px] font-bold tracking-wider uppercase px-2 py-0.5 rounded-full border ${getPriorityStyle(
+                  task.priority
+                )}`}
+              >
+                {task.priority}
+              </span>
+            )}
 
             {isOverdueActive && (
               <span className="flex items-center space-x-1 text-[10px] font-bold text-rose-600 dark:text-rose-400 bg-rose-500/10 border border-rose-200 dark:border-rose-900/50 px-2 py-0.5 rounded-full animate-pulse">

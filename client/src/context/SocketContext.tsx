@@ -51,9 +51,9 @@ export const SocketProvider: React.FC<{ children: React.ReactNode }> = ({ childr
 
     const s = io(socketUrl, {
       auth: { token },
-      transports: ['websocket', 'polling'],
+      transports: ['polling', 'websocket'],
       reconnection: true,
-      reconnectionAttempts: 10,
+      reconnectionAttempts: 15,
       reconnectionDelay: 1000,
     });
 
