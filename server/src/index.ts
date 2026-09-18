@@ -59,7 +59,16 @@ app.use(
 app.use(express.json());
 app.use(cookieParser());
 
-// 3. Health check
+// 3. Health & root status check
+app.get('/', (_req, res) => {
+  res.json({
+    message: '🚀 SyncCoders Backend API is active and running',
+    endpoints: '/api',
+    health: '/health',
+    timestamp: new Date().toISOString(),
+  });
+});
+
 app.get('/health', (_req, res) => {
   res.json({ status: 'ok', timestamp: new Date().toISOString() });
 });
