@@ -1,11 +1,13 @@
 import 'express-async-errors';
 import dns from 'node:dns';
 
-// Ensure fast, reliable Anycast DNS resolution with IPv4 preference for cloud databases
-try {
-  dns.setServers(['8.8.8.8', '1.1.1.1']);
-  dns.setDefaultResultOrder('ipv4first');
-} catch (_) {}
+// Ensure fast, reliable Anycast DNS resolution with IPv4 preference for cloud databases on Windows
+if (process.platform === 'win32') {
+  try {
+    dns.setServers(['8.8.8.8', '1.1.1.1']);
+    dns.setDefaultResultOrder('ipv4first');
+  } catch (_) {}
+}
 
 import http from 'http';
 import express from 'express';

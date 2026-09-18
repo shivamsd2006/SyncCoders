@@ -1,10 +1,12 @@
 import dns from 'node:dns';
 import { PrismaClient } from '@prisma/client';
 
-try {
-  dns.setServers(['8.8.8.8', '1.1.1.1']);
-  dns.setDefaultResultOrder('ipv4first');
-} catch (_) {}
+if (process.platform === 'win32') {
+  try {
+    dns.setServers(['8.8.8.8', '1.1.1.1']);
+    dns.setDefaultResultOrder('ipv4first');
+  } catch (_) {}
+}
 
 const basePrisma = new PrismaClient({
   log: process.env.NODE_ENV === 'development' ? ['error', 'warn'] : ['error'],
@@ -18,10 +20,22 @@ export const prisma = basePrisma.$extends({
           return await query(args);
         } catch (err: any) {
           const errStr = `${err?.name || ''} ${err?.message || ''} ${err?.code || ''}`;
+
+          // Never retry permanent authentication failures or circuit breaker locks
+          const isPermanentAuthError =
+            err?.code === 'P1000' ||
+            errStr.includes('ECIRCUITBREAKER') ||
+            errStr.includes('authentication failed') ||
+            errStr.includes('password authentication failed') ||
+            errStr.includes('too many authentication failures');
+
+          if (isPermanentAuthError) {
+            throw err;
+          }
+
           const isRetryable =
             err?.code === 'P1017' ||
             err?.code === 'P1001' ||
-            err?.code === 'P1000' ||
             err?.code === 'P1002' ||
             errStr.includes('closed the connection') ||
             errStr.includes('ConnectionReset') ||
