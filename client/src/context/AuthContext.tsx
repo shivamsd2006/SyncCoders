@@ -23,6 +23,13 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   // Check auth session on startup using the HttpOnly refresh token cookie
   useEffect(() => {
     const initAuth = async () => {
+      // Avoid making an unauthorized request if the user does not have an active session
+      const hasSessionHint = localStorage.getItem('synccoders_has_session') === 'true';
+      if (!hasSessionHint) {
+        setIsLoading(false);
+        return;
+      }
+
       try {
         const res = await api.post('/auth/refresh');
         if (res.data.success) {
@@ -31,11 +38,13 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           setToken(newToken);
           setAccessToken(newToken);
           setUser(userData);
+          localStorage.setItem('synccoders_has_session', 'true');
         }
       } catch {
         setToken(null);
         setAccessToken(null);
         setUser(null);
+        localStorage.removeItem('synccoders_has_session');
       } finally {
         setIsLoading(false);
       }
@@ -47,6 +56,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       setToken(null);
       setAccessToken(null);
       setUser(null);
+      localStorage.removeItem('synccoders_has_session');
     };
 
     window.addEventListener('auth:expired', handleExpired);
@@ -61,6 +71,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         setToken(accessToken);
         setAccessToken(accessToken);
         setUser(userData);
+        localStorage.setItem('synccoders_has_session', 'true');
         return { success: true };
       }
       return { success: false, error: 'Login failed' };
@@ -78,6 +89,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         setToken(accessToken);
         setAccessToken(accessToken);
         setUser(userData);
+        localStorage.setItem('synccoders_has_session', 'true');
         return { success: true };
       }
       return { success: false, error: 'Registration failed' };
@@ -111,6 +123,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       setToken(null);
       setAccessToken(null);
       setUser(null);
+      localStorage.removeItem('synccoders_has_session');
     }
   };
 

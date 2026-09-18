@@ -9,6 +9,14 @@ if (process.platform === 'win32') {
   } catch (_) {}
 }
 
+// Sanitize database URLs (strips accidental quotes and trailing whitespace from cloud dashboard paste)
+if (process.env.DATABASE_URL) {
+  process.env.DATABASE_URL = process.env.DATABASE_URL.trim().replace(/^["']|["']$/g, '');
+}
+if (process.env.DIRECT_URL) {
+  process.env.DIRECT_URL = process.env.DIRECT_URL.trim().replace(/^["']|["']$/g, '');
+}
+
 import http from 'http';
 import express from 'express';
 import cors from 'cors';
@@ -17,6 +25,7 @@ import { ENV } from './config/env.js';
 import { errorHandler } from './middleware/errorHandler.js';
 import { initSocketServer } from './sockets/socketManager.js';
 import { startOverdueScheduler } from './jobs/overdueScheduler.js';
+import { prisma } from './config/prisma.js';
 
 import authRoutes from './routes/auth.routes.js';
 import projectsRoutes from './routes/projects.routes.js';
@@ -73,6 +82,43 @@ app.get('/', (_req, res) => {
 
 app.get('/health', (_req, res) => {
   res.json({ status: 'ok', timestamp: new Date().toISOString() });
+});
+
+// Diagnostic database connectivity check
+app.get('/api/db-check', async (_req, res) => {
+  const rawDbUrl = process.env.DATABASE_URL || '';
+  const rawDirectUrl = process.env.DIRECT_URL || '';
+
+  const maskUrl = (url: string) => {
+    try {
+      const u = new URL(url);
+      return `${u.protocol}//${u.username}:****@${u.host}${u.pathname}${u.search}`;
+    } catch (_) {
+      return url.length > 10 ? `${url.substring(0, 10)}... (malformed URL)` : '(empty/invalid)';
+    }
+  };
+
+  const info = {
+    hasDatabaseUrl: Boolean(rawDbUrl),
+    databaseUrlMasked: maskUrl(rawDbUrl),
+    hasDirectUrl: Boolean(rawDirectUrl),
+    directUrlMasked: maskUrl(rawDirectUrl),
+    rawUrlStartsWithQuote: rawDbUrl.startsWith('"') || rawDbUrl.startsWith("'"),
+    rawUrlEndsWithQuote: rawDbUrl.endsWith('"') || rawDbUrl.endsWith("'"),
+    port: rawDbUrl.includes(':6543') ? 6543 : rawDbUrl.includes(':5432') ? 5432 : 'other',
+  };
+
+  try {
+    const userCount = await prisma.user.count();
+    return res.json({ success: true, message: 'Database connected successfully', userCount, info });
+  } catch (err: any) {
+    return res.status(500).json({
+      success: false,
+      message: 'Database connection failed',
+      error: err?.message || String(err),
+      info,
+    });
+  }
 });
 
 // 4. Mount API Routes

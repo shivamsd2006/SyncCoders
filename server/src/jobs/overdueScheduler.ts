@@ -3,10 +3,16 @@ import { TaskStatus } from '@prisma/client';
 import { prisma } from '../config/prisma.js';
 import { emitNotification } from '../sockets/socketManager.js';
 
+let pauseUntil: Date | null = null;
+
 export function startOverdueScheduler() {
   console.log('⏰ Starting overdue task scheduler (runs every 60s)...');
 
   cron.schedule('* * * * *', async () => {
+    if (pauseUntil && new Date() < pauseUntil) {
+      return;
+    }
+
     try {
       const now = new Date();
 
@@ -82,8 +88,14 @@ export function startOverdueScheduler() {
       }
 
       console.log(`[CRON] Successfully processed and notified for ${tasksToFlag.length} overdue tasks`);
-    } catch (error) {
-      console.error('[CRON ERROR] Failed during overdue task check:', error);
+    } catch (error: any) {
+      const errStr = `${error?.message || ''} ${error?.code || ''}`;
+      if (errStr.includes('ECIRCUITBREAKER') || errStr.includes('authentication failed') || error?.code === 'P1000') {
+        console.warn('[CRON] Database auth error or circuit breaker detected. Pausing overdue scheduler for 5 minutes.');
+        pauseUntil = new Date(Date.now() + 5 * 60 * 1000);
+      } else {
+        console.error('[CRON ERROR] Failed during overdue task check:', error);
+      }
     }
   });
 }
